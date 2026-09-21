@@ -1,0 +1,263 @@
+{
+  "success": true,
+  "diagram": {
+    "classes": [
+      {
+        "name": "Cliente",
+        "attributes": [
+          {
+            "name": "id",
+            "type": "int",
+            "visibility": "public"
+          },
+          {
+            "name": "nombre",
+            "type": "String",
+            "visibility": "public"
+          },
+          {
+            "name": "apellido",
+            "type": "String",
+            "visibility": "public"
+          },
+          {
+            "name": "email",
+            "type": "String",
+            "visibility": "public"
+          },
+          {
+            "name": "telefono",
+            "type": "String",
+            "visibility": "public"
+          },
+          {
+            "name": "direccion",
+            "type": "String",
+            "visibility": "public"
+          }
+        ],
+        "methods": []
+      },
+      {
+        "name": "Venta",
+        "attributes": [
+          {
+            "name": "id",
+            "type": "int",
+            "visibility": "public"
+          },
+          {
+            "name": "fecha",
+            "type": "Date",
+            "visibility": "public"
+          },
+          {
+            "name": "total",
+            "type": "double",
+            "visibility": "public"
+          }
+        ],
+        "methods": []
+      },
+      {
+        "name": "Producto",
+        "attributes": [
+          {
+            "name": "id",
+            "type": "int",
+            "visibility": "public"
+          },
+          {
+            "name": "nombre",
+            "type": "String",
+            "visibility": "public"
+          },
+          {
+            "name": "descripcion",
+            "type": "String",
+            "visibility": "public"
+          },
+          {
+            "name": "precio",
+            "type": "double",
+            "visibility": "public"
+          },
+          {
+            "name": "stock",
+            "type": "int",
+            "visibility": "public"
+          },
+          {
+            "name": "imagenUrl",
+            "type": "String",
+            "visibility": "public"
+          }
+        ],
+        "methods": []
+      },
+      {
+        "name": "Compra",
+        "attributes": [
+          {
+            "name": "id",
+            "type": "int",
+            "visibility": "public"
+          },
+          {
+            "name": "fecha",
+            "type": "Date",
+            "visibility": "public"
+          },
+          {
+            "name": "total",
+            "type": "double",
+            "visibility": "public"
+          }
+        ],
+        "methods": []
+      },
+      {
+        "name": "Proveedor",
+        "attributes": [
+          {
+            "name": "id",
+            "type": "int",
+            "visibility": "public"
+          },
+          {
+            "name": "nombre",
+            "type": "String",
+            "visibility": "public"
+          },
+          {
+            "name": "telefono",
+            "type": "String",
+            "visibility": "public"
+          },
+          {
+            "name": "email",
+            "type": "String",
+            "visibility": "public"
+          },
+          {
+            "name": "direccion",
+            "type": "String",
+            "visibility": "public"
+          }
+        ],
+        "methods": []
+      },
+      {
+        "name": "DetalleVenta",
+        "attributes": [
+          {
+            "name": "cantidad",
+            "type": "int",
+            "visibility": "public"
+          },
+          {
+            "name": "precioUnitario",
+            "type": "double",
+            "visibility": "public"
+          }
+        ],
+        "methods": []
+      },
+      {
+        "name": "DetalleCompra",
+        "attributes": [
+          {
+            "name": "cantidad",
+            "type": "int",
+            "visibility": "public"
+          },
+          {
+            "name": "costoUnitario",
+            "type": "double",
+            "visibility": "public"
+          }
+        ],
+        "methods": []
+      },
+      {
+        "name": "Categoria",
+        "attributes": [
+          {
+            "name": "id",
+            "type": "int",
+            "visibility": "public"
+          },
+          {
+            "name": "nombre",
+            "type": "String",
+            "visibility": "public"
+          },
+          {
+            "name": "descripcion",
+            "type": "String",
+            "visibility": "public"
+          }
+        ],
+        "methods": []
+      }
+    ],
+    "relationships": [
+      {
+        "type": "association",
+        "source": "Cliente",
+        "target": "Venta",
+        "multiplicity": "1..*"
+      },
+      {
+        "type": "association",
+        "source": "Venta",
+        "target": "DetalleVenta",
+        "multiplicity": "0..*"
+      },
+      {
+        "type": "association",
+        "source": "Producto",
+        "target": "DetalleVenta",
+        "multiplicity": "1..*"
+      },
+      {
+        "type": "association",
+        "source": "Compra",
+        "target": "DetalleCompra",
+        "multiplicity": "1..*"
+      },
+      {
+        "type": "association",
+        "source": "Producto",
+        "target": "DetalleCompra",
+        "multiplicity": "0..*"
+      },
+      {
+        "type": "association",
+        "source": "Categoria",
+        "target": "Producto",
+        "multiplicity": "1..*"
+      },
+      {
+        "type": "association",
+        "source": "Proveedor",
+        "target": "Compra",
+        "multiplicity": "1..*"
+      }
+    ]
+  },
+  "usage": {
+    "model": "gpt-4o-mini",
+    "tokens": {
+      "prompt": 37068,
+      "completion": 1031,
+      "total": 38099
+    },
+    "cost": {
+      "input": 0.0055601999999999995,
+      "output": 0.0006185999999999999,
+      "total": 0.006178799999999999,
+      "currency": "USD"
+    }
+  }
+}

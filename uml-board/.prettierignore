@@ -1,0 +1,22 @@
+# Archivos de build
+dist/
+build/
+
+# Dependencias
+node_modules/
+
+# Archivos de configuración específicos
+package-lock.json
+yarn.lock
+
+# Archivos generados
+*.min.js
+*.min.css
+
+# Archivos de entorno
+.env
+.env.local
+.env.production
+
+# Archivos de documentación con formato específico
+CHANGELOG.md

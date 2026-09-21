@@ -1,0 +1,15 @@
+{
+  "name": "CASE UML - Asistente",
+  "short_name": "CASE UML",
+  "description": "Herramienta CASE colaborativa: modelado UML, diseno de datos y generacion de backend Spring Boot",
+  "start_url": "/voz",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#12151a",
+  "theme_color": "#12151a",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

@@ -1,0 +1,183 @@
+/* Modal del asistente UML. Usa los tokens de styles/theme.css, así acompaña el
+   tema claro / oscuro sin duplicar colores. */
+
+.uml-prompt-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(10, 12, 16, 0.55);
+  backdrop-filter: blur(3px);
+}
+
+.uml-prompt-modal {
+  width: 100%;
+  max-width: 620px;
+  max-height: 88vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-3);
+}
+
+.uml-prompt-content {
+  padding: 22px;
+}
+
+.uml-prompt-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.uml-prompt-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.uml-prompt-close {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.uml-prompt-close:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.uml-prompt-description {
+  margin: 0 0 14px;
+  color: var(--text-2);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.uml-prompt-textarea {
+  width: 100%;
+  min-height: 130px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.uml-prompt-textarea::placeholder {
+  color: var(--text-3);
+}
+
+.uml-prompt-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.uml-prompt-textarea:disabled {
+  opacity: 0.6;
+}
+
+.uml-prompt-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.uml-prompt-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: uml-spin 0.7s linear infinite;
+}
+
+@keyframes uml-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.uml-prompt-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.uml-prompt-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.uml-prompt-button:hover:not(:disabled) {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+}
+
+.uml-prompt-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.uml-prompt-button-submit {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.uml-prompt-button-submit:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+/* Mientras graba, el botón late para que se vea que el micrófono está abierto. */
+.uml-prompt-button-voice.listening {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger);
+  animation: uml-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes uml-pulse {
+  50% {
+    opacity: 0.62;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .uml-prompt-spinner,
+  .uml-prompt-button-voice.listening {
+    animation: none;
+  }
+}

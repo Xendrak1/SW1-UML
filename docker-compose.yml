@@ -1,0 +1,23 @@
+# Infraestructura local del proyecto CASE.
+# Levanta Postgres para la app CASE (no confundir con la BD que genera el backend Spring Boot).
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: case_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: case_user
+      POSTGRES_PASSWORD: case_pass
+      POSTGRES_DB: case_db
+    ports:
+      - '5433:5432'
+    volumes:
+      - case_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U case_user -d case_db']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  case_pgdata:

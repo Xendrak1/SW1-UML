@@ -1,0 +1,353 @@
+{
+ "herramienta": "Enterprise Architect",
+ "paquete": "3.2 Modelo de Datos",
+ "clases": [
+  {
+   "id": "60",
+   "guid": "{549567C4-6135-43ce-AA13-4A1D8FE333F4}",
+   "nombre": "Usuario",
+   "estereotipo": "",
+   "x": 40,
+   "y": 60,
+   "atributos": [
+    {
+     "nombre": "id",
+     "tipo": "int",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "nombre",
+     "tipo": "string",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "apellido",
+     "tipo": "string",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "ci",
+     "tipo": "string",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "correo",
+     "tipo": "string",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "contrasena",
+     "tipo": "string",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "telefono",
+     "tipo": "string",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "fecha_nacimiento",
+     "tipo": "date",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "sexo",
+     "tipo": "string",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "objetivo",
+     "tipo": "string",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "rol",
+     "tipo": "string",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "fecha_registro",
+     "tipo": "date",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "estado",
+     "tipo": "boolean",
+     "visibilidad": "Public"
+    }
+   ]
+  },
+  {
+   "id": "61",
+   "guid": "{490E7FB3-B284-4753-BBB5-9B3A23E07C37}",
+   "nombre": "Rutina",
+   "estereotipo": "",
+   "x": 350,
+   "y": 60,
+   "atributos": [
+    {
+     "nombre": "id",
+     "tipo": "int",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "nombre",
+     "tipo": "string",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "objetivo",
+     "tipo": "string",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "fecha_inicio",
+     "tipo": "date",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "fecha_fin",
+     "tipo": "date",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "observacion",
+     "tipo": "string",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "estado",
+     "tipo": "string",
+     "visibilidad": "Public"
+    }
+   ]
+  },
+  {
+   "id": "62",
+   "guid": "{FF255FD7-9DD5-4c59-9286-90E4F8835EDE}",
+   "nombre": "DetalleRutina",
+   "estereotipo": "",
+   "x": 350,
+   "y": 300,
+   "atributos": [
+    {
+     "nombre": "id",
+     "tipo": "int",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "dia",
+     "tipo": "string",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "series",
+     "tipo": "int",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "repeticiones",
+     "tipo": "int",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "descanso_seg",
+     "tipo": "int",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "nota",
+     "tipo": "string",
+     "visibilidad": "Public"
+    }
+   ]
+  },
+  {
+   "id": "63",
+   "guid": "{B5518D3C-7849-4806-A175-CF90061E7D02}",
+   "nombre": "Ejercicio",
+   "estereotipo": "",
+   "x": 660,
+   "y": 300,
+   "atributos": [
+    {
+     "nombre": "id",
+     "tipo": "int",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "nombre",
+     "tipo": "string",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "explicacion",
+     "tipo": "string",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "url_video",
+     "tipo": "string",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "dificultad",
+     "tipo": "string",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "estado",
+     "tipo": "boolean",
+     "visibilidad": "Public"
+    }
+   ]
+  },
+  {
+   "id": "64",
+   "guid": "{0C604B25-2161-435e-A597-22C821BB68F4}",
+   "nombre": "Categoria",
+   "estereotipo": "",
+   "x": 660,
+   "y": 60,
+   "atributos": [
+    {
+     "nombre": "id",
+     "tipo": "int",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "nombre",
+     "tipo": "string",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "descripcion",
+     "tipo": "string",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "estado",
+     "tipo": "boolean",
+     "visibilidad": "Public"
+    }
+   ]
+  },
+  {
+   "id": "65",
+   "guid": "{45658DCA-3662-4632-A01B-BC9E70324D5B}",
+   "nombre": "ImagenEjercicio",
+   "estereotipo": "",
+   "x": 660,
+   "y": 530,
+   "atributos": [
+    {
+     "nombre": "id",
+     "tipo": "int",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "url_imagen",
+     "tipo": "string",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "descripcion",
+     "tipo": "string",
+     "visibilidad": "Public"
+    }
+   ]
+  },
+  {
+   "id": "66",
+   "guid": "{97A62CA3-A73E-4f9f-98F8-6560FF566E27}",
+   "nombre": "Seguimiento",
+   "estereotipo": "",
+   "x": 350,
+   "y": 530,
+   "atributos": [
+    {
+     "nombre": "id",
+     "tipo": "int",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "fecha_registro",
+     "tipo": "datetime",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "realizado",
+     "tipo": "boolean",
+     "visibilidad": "Public"
+    },
+    {
+     "nombre": "comentario",
+     "tipo": "string",
+     "visibilidad": "Public"
+    }
+   ]
+  }
+ ],
+ "conectores": [
+  {
+   "guid": "{6B462690-5325-4196-A43A-77C2F91308D8}",
+   "tipo": "Association",
+   "origen": "60",
+   "destino": "61",
+   "cardOrigen": "1..1",
+   "cardDestino": "0..*",
+   "aggOrigen": 0,
+   "aggDestino": 0
+  },
+  {
+   "guid": "{CE73AB89-D64D-4200-BC88-8423B6615AAD}",
+   "tipo": "Association",
+   "origen": "64",
+   "destino": "63",
+   "cardOrigen": "1..1",
+   "cardDestino": "0..*",
+   "aggOrigen": 0,
+   "aggDestino": 0
+  },
+  {
+   "guid": "{A366B37C-6DDA-45ed-9405-21C44AD88877}",
+   "tipo": "Association",
+   "origen": "63",
+   "destino": "65",
+   "cardOrigen": "1..1",
+   "cardDestino": "0..*",
+   "aggOrigen": 0,
+   "aggDestino": 0
+  },
+  {
+   "guid": "{5DA563E5-2077-46cf-A3CB-24A3B614BD87}",
+   "tipo": "Aggregation",
+   "origen": "62",
+   "destino": "61",
+   "cardOrigen": "1..*",
+   "cardDestino": "1..1",
+   "aggOrigen": 0,
+   "aggDestino": 2
+  },
+  {
+   "guid": "{E60669F3-F428-428c-8C0D-AA66685BFA77}",
+   "tipo": "Association",
+   "origen": "63",
+   "destino": "62",
+   "cardOrigen": "1..1",
+   "cardDestino": "0..*",
+   "aggOrigen": 0,
+   "aggDestino": 0
+  },
+  {
+   "guid": "{ACA81DDF-FEDA-47d3-BEF2-849D0C59CFD6}",
+   "tipo": "Association",
+   "origen": "62",
+   "destino": "66",
+   "cardOrigen": "1..1",
+   "cardDestino": "0..1",
+   "aggOrigen": 0,
+   "aggDestino": 0
+  }
+ ]
+}
