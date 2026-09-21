@@ -26,6 +26,16 @@ export const config = {
   databaseUrl:
     process.env.DATABASE_URL ?? 'postgresql://case_user:case_pass@localhost:5433/case_db',
   uploadDir: process.env.UPLOAD_DIR ?? './uploads',
+  /**
+   * Carpeta con el frontend ya compilado. Si esta definida, el mismo proceso
+   * sirve la API y la aplicacion.
+   *
+   * En la nube esto es lo que conviene: un solo servicio, un solo dominio. Con
+   * el frontend en otro origen habria que configurar CORS con credenciales y el
+   * WebSocket cruzado, que son dos cosas mas que pueden fallar el dia de la
+   * demostracion. En desarrollo se deja vacio y Vite sirve el frontend.
+   */
+  staticDir: process.env.STATIC_DIR ?? '',
   auth: {
     secret: secretoAuth,
     /**
@@ -35,6 +45,18 @@ export const config = {
      * de uso: en la nube tiene que quedar en true.
      */
     requerida: process.env.AUTH_REQUIRED !== 'false',
+    /**
+     * Codigo de registro. Si esta definido, para crear una cuenta hay que
+     * escribirlo.
+     *
+     * Existe porque en la nube la pantalla de registro queda expuesta a
+     * internet: sin esto, cualquiera que encuentre la URL se crea una cuenta y
+     * entra a crear pizarras. Con un codigo compartido con el equipo, el
+     * registro sigue siendo de autoservicio (no hay que dar de alta a nadie a
+     * mano) pero deja de estar abierto al mundo. Vacio = registro abierto, que
+     * es lo comodo para desarrollo local.
+     */
+    codigoRegistro: process.env.REGISTRO_CODIGO ?? '',
   },
   ai: {
     strategy: (process.env.AI_STRATEGY ?? 'hybrid') as 'local' | 'cloud' | 'hybrid',

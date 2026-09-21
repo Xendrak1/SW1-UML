@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ThemeToggle } from '../lib/theme';
-import { iniciarSesion, registrarse, type Usuario } from '../lib/sesion';
+import { iniciarSesion, modoDeAcceso, registrarse, type Usuario } from '../lib/sesion';
 
 /**
  * Pantalla de acceso.
@@ -20,8 +20,21 @@ const AccesoPage: React.FC<Props> = ({ onEntrar }) => {
   const [nombre, setNombre] = useState('');
   const [correo, setCorreo] = useState('');
   const [password, setPassword] = useState('');
+  const [codigo, setCodigo] = useState('');
+  const [requiereCodigo, setRequiereCodigo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+
+  // En un despliegue publico el registro puede estar protegido con un codigo.
+  useEffect(() => {
+    let vivo = true;
+    void modoDeAcceso().then(m => {
+      if (vivo) setRequiereCodigo(m.requiereCodigo);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, []);
 
   const enviar = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,7 +44,7 @@ const AccesoPage: React.FC<Props> = ({ onEntrar }) => {
       const usuario =
         modo === 'login'
           ? await iniciarSesion(correo, password)
-          : await registrarse(nombre, correo, password);
+          : await registrarse(nombre, correo, password, codigo);
       onEntrar(usuario);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo completar la operación');
@@ -95,6 +108,19 @@ const AccesoPage: React.FC<Props> = ({ onEntrar }) => {
               <span className='muted small'>Al menos 8 caracteres.</span>
             )}
           </label>
+
+          {modo === 'registro' && requiereCodigo && (
+            <label className='acceso__campo'>
+              <span className='muted small'>Código de registro</span>
+              <input
+                className='input'
+                value={codigo}
+                onChange={e => setCodigo(e.target.value)}
+                required
+              />
+              <span className='muted small'>Te lo comparte quien administra el sistema.</span>
+            </label>
+          )}
 
           {error && (
             <div className='notice notice--warn' style={{ marginTop: 12 }} role='alert'>

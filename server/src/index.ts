@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { join, resolve } from 'node:path';
 import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { config } from './config.js';
@@ -51,6 +52,23 @@ app.use('/api', uploadsRouter);
 app.use('/api/ai', aiRouter);
 app.use('/api/case', caseRouter);
 app.use('/files', express.static(uploadDir));
+
+/**
+ * Frontend compilado, cuando STATIC_DIR apunta a el.
+ *
+ * Va DESPUES de las rutas de API para no taparlas, y el comodin del final
+ * devuelve index.html para cualquier ruta que no sea un archivo: la aplicacion
+ * usa rutas del lado del cliente (/datos, /guia, /voz), y sin esto recargar la
+ * pagina en una de ellas daria 404.
+ */
+if (config.staticDir !== '') {
+  const raiz = resolve(process.cwd(), config.staticDir);
+  app.use(express.static(raiz));
+  app.get(/^(?!\/api|\/files|\/health|\/ws).*/, (_req, res) => {
+    res.sendFile(join(raiz, 'index.html'));
+  });
+  console.log(`[http] sirviendo el frontend desde ${raiz}`);
+}
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   console.error('[http] error', err);

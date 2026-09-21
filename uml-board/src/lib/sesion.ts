@@ -80,8 +80,28 @@ async function pedir(ruta: string, cuerpo: unknown): Promise<Usuario> {
 export const iniciarSesion = (correo: string, password: string): Promise<Usuario> =>
   pedir('/api/auth/login', { correo, password });
 
-export const registrarse = (nombre: string, correo: string, password: string): Promise<Usuario> =>
-  pedir('/api/auth/registro', { nombre, correo, password });
+export const registrarse = (
+  nombre: string,
+  correo: string,
+  password: string,
+  codigo?: string
+): Promise<Usuario> => pedir('/api/auth/registro', { nombre, correo, password, codigo });
+
+/**
+ * Que pide el servidor para registrarse. Si el despliegue tiene codigo de
+ * registro, el formulario tiene que mostrar ese campo.
+ */
+export async function modoDeAcceso(): Promise<{ requiereCodigo: boolean }> {
+  try {
+    const res = await fetch(`${API_URL}/api/auth/modo`);
+    if (!res.ok) return { requiereCodigo: false };
+    return (await res.json()) as { requiereCodigo: boolean };
+  } catch {
+    // Sin servidor no se puede registrar de todos modos: no pedir el codigo
+    // evita mostrar un campo que no se puede completar.
+    return { requiereCodigo: false };
+  }
+}
 
 /**
  * Comprueba contra el servidor que el token siga siendo valido. Se llama al

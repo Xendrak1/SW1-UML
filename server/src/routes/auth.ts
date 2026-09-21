@@ -3,6 +3,7 @@ import { pool } from '../db.js';
 import { hashPassword, verificarPassword } from '../auth/passwords.js';
 import { emitirToken, DURACION_SEGUNDOS } from '../auth/tokens.js';
 import { requiereSesion } from '../auth/middleware.js';
+import { config } from '../config.js';
 
 export const authRouter = Router();
 
@@ -23,8 +24,26 @@ const normalizarCorreo = (v: unknown): string => String(v ?? '').trim().toLowerC
  * proposito: aca el usuario necesita saber que el correo ya existe, y de todas
  * formas el registro ya revela esa informacion por su naturaleza.
  */
+/**
+ * Que necesita el formulario de acceso antes de mostrarse. La pantalla lo
+ * consulta al abrir para saber si tiene que pedir el codigo de registro.
+ */
+authRouter.get('/modo', (_req, res) => {
+  res.json({ requiereCodigo: config.auth.codigoRegistro !== '' });
+});
+
 authRouter.post('/registro', async (req, res, next) => {
   try {
+    // El codigo se valida antes que nada: no tiene sentido calcular un hash de
+    // contrasena, que es caro a proposito, para alguien que no puede registrarse.
+    if (config.auth.codigoRegistro !== '') {
+      const codigo = String(req.body?.codigo ?? '').trim();
+      if (codigo !== config.auth.codigoRegistro) {
+        res.status(403).json({ error: 'El codigo de registro no es correcto' });
+        return;
+      }
+    }
+
     const correo = normalizarCorreo(req.body?.correo);
     const nombre = String(req.body?.nombre ?? '').trim();
     const password = String(req.body?.password ?? '');
