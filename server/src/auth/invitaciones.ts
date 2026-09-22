@@ -126,11 +126,15 @@ export async function usarInvitacion(token: string, usuarioId: string): Promise<
       return null;
     }
     const inv = aInvitacion(rows[0]);
+    // El invitado entra como "pendiente": la pizarra es del anfitrion y es el
+    // anfitrion quien decide si lo deja pasar. Aprobarlo lo vuelve editor.
+    // Si ya era miembro (lo invitaron antes), conserva su rol: no se lo
+    // degrada a pendiente.
     await cliente.query(
       `INSERT INTO board_members (board_id, usuario_id, rol)
-       VALUES ($1, $2, $3)
+       VALUES ($1, $2, 'pendiente')
        ON CONFLICT (board_id, usuario_id) DO NOTHING`,
-      [inv.boardId, usuarioId, inv.rol]
+      [inv.boardId, usuarioId]
     );
     await cliente.query('COMMIT');
     return inv;

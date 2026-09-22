@@ -14,7 +14,7 @@ import { config } from '../config.js';
  * que haber iniciado sesion.
  */
 
-export type Rol = 'propietario' | 'editor' | 'lector';
+export type Rol = 'propietario' | 'editor' | 'lector' | 'pendiente';
 
 export interface Acceso {
   rol: Rol;

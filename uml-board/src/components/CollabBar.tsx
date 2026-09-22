@@ -4,6 +4,8 @@ import { cerrarSesion, usuarioActual } from '../lib/sesion';
 import { useClassStore } from '../store/classStore';
 import { Menu, MenuDivider, MenuItem, MenuLabel } from './Menu';
 
+import { api } from '../lib/apiClient';
+
 /**
  * Indicadores de la sesión colaborativa: conexión, cola de cambios pendientes y
  * participantes. Vive aparte de la barra para que Toolbar se ocupe solo de las
@@ -21,22 +23,46 @@ const ESTADOS = {
   rechazado: { clase: 'chip chip--danger', texto: 'Sin acceso' },
 } as const;
 
-const CollabBar: React.FC = () => {
+const CollabBar: React.FC<{ boardId: string }> = (props) => {
   const connection = useClassStore(s => s.connection);
   const motivo = useClassStore(s => s.connectionMotivo);
   const pendingOps = useClassStore(s => s.pendingOps);
   const participants = useClassStore(s => s.participants);
   const conflictos = useClassStore(s => s.conflictos);
   const descartarConflicto = useClassStore(s => s.descartarConflicto);
+  const currentDiagramId = useClassStore(s => s.currentDiagramId);
 
   const [identity, setIdentity] = useState(getIdentity);
   const usuario = usuarioActual();
   const [editando, setEditando] = useState(false);
 
+  const [pendientes, setPendientes] = useState<Array<{ usuario_id: string; nombre: string }>>([]);
+  
+  const esAnfitrion = participants.find(p => p.clientId === identity.clientId)?.esAnfitrion ?? false;
+  
+  React.useEffect(() => {
+    if (!esAnfitrion || !currentDiagramId || !props.boardId) return;
+    let vivo = true;
+    const cargar = () => {
+      api.getPendientes(props.boardId).then(ps => {
+        if (vivo) setPendientes(ps);
+      }).catch(err => console.error(err));
+    };
+    cargar();
+    const id = setInterval(cargar, 5000);
+    return () => { vivo = false; clearInterval(id); };
+  }, [esAnfitrion, currentDiagramId, props.boardId]);
+
   const estado = ESTADOS[connection];
 
   return (
     <>
+      {pendientes.length > 0 && (
+        <span className='chip chip--warn' title='Solicitudes de acceso pendientes'>
+          {pendientes.length} en espera
+        </span>
+      )}
+
       <span
         className={estado.clase}
         title={motivo ?? 'Conexión con el servidor colaborativo'}
@@ -58,6 +84,16 @@ const CollabBar: React.FC = () => {
           Volver a entrar
         </button>
       )}
+
+      {connection === 'rechazado' && motivo && /pendiente/i.test(motivo) && (
+        <button
+          className='btn btn--sm'
+          onClick={() => window.location.reload()}
+        >
+          Consultar estado
+        </button>
+      )}
+
 
       {pendingOps > 0 && (
         <span
@@ -92,7 +128,26 @@ const CollabBar: React.FC = () => {
         {() => (
           <>
             <MenuLabel>En esta pizarra</MenuLabel>
-            {participants.length === 0 && (
+            {pendientes.length > 0 && pendientes.map(p => (
+              <div className='menu__item' key={p.usuario_id} style={{ cursor: 'default', background: 'var(--color-bg-hover)' }}>
+                <span style={{ flex: 1 }}>{p.nombre} (esperando)</span>
+                <button
+                  className='btn btn--ghost btn--sm btn--icon'
+                  title='Aprobar'
+                  onClick={() => api.aprobarPendiente(props.boardId, p.usuario_id).catch(console.error)}
+                >
+                  ✓
+                </button>
+                <button
+                  className='btn btn--ghost btn--sm btn--icon btn--danger'
+                  title='Rechazar'
+                  onClick={() => api.rechazarPendiente(props.boardId, p.usuario_id).catch(console.error)}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+            {participants.length === 0 && pendientes.length === 0 && (
               <MenuItem icon='·' disabled>
                 Nadie más conectado
               </MenuItem>

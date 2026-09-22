@@ -261,7 +261,117 @@ boardsRouter.post('/invitaciones/:token/aceptar', async (req, res, next) => {
       res.status(409).json({ error: 'El enlace de invitacion se agoto' });
       return;
     }
-    res.json({ boardId: usada.boardId, rol: usada.rol, pizarra: inv.pizarra });
+    // El rol efectivo es el del miembro, no el de la invitacion: quien ya era
+    // miembro conserva el suyo, y quien entra por primera vez queda pendiente
+    // de que el anfitrion lo apruebe.
+    const miembro = await pool.query<{ rol: string }>(
+      'SELECT rol FROM board_members WHERE board_id = $1 AND usuario_id = $2',
+      [usada.boardId, usuarioId]
+    );
+    res.json({ boardId: usada.boardId, rol: miembro.rows[0]?.rol ?? 'pendiente', pizarra: inv.pizarra });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Solicitudes de acceso: quien usa un enlace de invitacion queda como
+ * "pendiente", y el anfitrion decide aca si lo deja entrar. Sin esto el enlace
+ * solo era una llave: cualquiera que lo tuviera entraba sin que nadie mirara.
+ */
+boardsRouter.get('/boards/:id/pendientes', async (req, res, next) => {
+  try {
+    const usuarioId = idDe(req);
+    if (!usuarioId) {
+      res.status(401).json({ error: 'Necesitas iniciar sesion' });
+      return;
+    }
+    const acceso = await accesoAPizarra(String(req.params.id), usuarioId);
+    if (!acceso || !acceso.esPropietario) {
+      res.status(403).json({ error: 'Solo el anfitrion ve las solicitudes de acceso' });
+      return;
+    }
+    const { rows } = await pool.query<{
+      usuario_id: string;
+      nombre: string;
+      correo: string;
+      created_at: string;
+    }>(
+      `SELECT m.usuario_id, u.nombre, u.correo, m.created_at
+         FROM board_members m JOIN usuarios u ON u.id = m.usuario_id
+        WHERE m.board_id = $1 AND m.rol = 'pendiente'
+        ORDER BY m.created_at ASC`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (err) {
+    next(err);
+  }
+});
+
+boardsRouter.post('/boards/:id/pendientes/:uid/aprobar', async (req, res, next) => {
+  try {
+    const usuarioId = idDe(req);
+    if (!usuarioId) {
+      res.status(401).json({ error: 'Necesitas iniciar sesion' });
+      return;
+    }
+    const acceso = await accesoAPizarra(String(req.params.id), usuarioId);
+    if (!acceso || !acceso.esPropietario) {
+      res.status(403).json({ error: 'Solo el anfitrion aprueba solicitudes' });
+      return;
+    }
+    await pool.query(
+      `UPDATE board_members SET rol = 'editor'
+        WHERE board_id = $1 AND usuario_id = $2 AND rol = 'pendiente'`,
+      [req.params.id, req.params.uid]
+    );
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+boardsRouter.post('/boards/:id/pendientes/:uid/rechazar', async (req, res, next) => {
+  try {
+    const usuarioId = idDe(req);
+    if (!usuarioId) {
+      res.status(401).json({ error: 'Necesitas iniciar sesion' });
+      return;
+    }
+    const acceso = await accesoAPizarra(String(req.params.id), usuarioId);
+    if (!acceso || !acceso.esPropietario) {
+      res.status(403).json({ error: 'Solo el anfitrion rechaza solicitudes' });
+      return;
+    }
+    await pool.query(
+      `DELETE FROM board_members
+        WHERE board_id = $1 AND usuario_id = $2 AND rol = 'pendiente'`,
+      [req.params.id, req.params.uid]
+    );
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** El rol propio en una pizarra: al invitado en espera le dice si ya lo aprobaron. */
+boardsRouter.get('/boards/:id/mi-rol', async (req, res, next) => {
+  try {
+    const usuarioId = idDe(req);
+    if (!usuarioId) {
+      res.status(401).json({ error: 'Necesitas iniciar sesion' });
+      return;
+    }
+    const { rows } = await pool.query<{ rol: string }>(
+      'SELECT rol FROM board_members WHERE board_id = $1 AND usuario_id = $2',
+      [req.params.id, usuarioId]
+    );
+    if (rows.length === 0) {
+      res.status(404).json({ error: 'No sos miembro de esta pizarra' });
+      return;
+    }
+    res.json({ rol: rows[0].rol });
   } catch (err) {
     next(err);
   }

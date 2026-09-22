@@ -320,7 +320,7 @@ const Toolbar: React.FC<ToolbarProps> = props => {
 
       <div className='toolbar__spacer' />
 
-      <CollabBar />
+      <CollabBar boardId={props.currentBoardId} />
 
       <div className='toolbar__sep' />
 

@@ -104,6 +104,16 @@ export function attachWebSocketServer(server: HttpServer): void {
               socket.close();
               return;
             }
+            // El invitado en espera no entra a la sala hasta que el anfitrion lo
+            // apruebe: su pantalla de acceso ya le esta mostrando el estado.
+            if (acceso.rol === 'pendiente') {
+              send(socket, {
+                type: 'error',
+                message: 'Tu acceso a esta pizarra esta pendiente de aprobacion del anfitrion',
+              });
+              socket.close();
+              return;
+            }
 
             session = {
               socket,

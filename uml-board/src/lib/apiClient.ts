@@ -102,6 +102,19 @@ export const api = {
       { method: 'POST' }
     ),
 
+  getPendientes: (boardId: string) =>
+    request<Array<{ usuario_id: string; nombre: string; correo: string; created_at: string }>>(
+      `/api/boards/${boardId}/pendientes`
+    ),
+  aprobarPendiente: (boardId: string, usuarioId: string) =>
+    request<void>(`/api/boards/${boardId}/pendientes/${encodeURIComponent(usuarioId)}/aprobar`, {
+      method: 'POST',
+    }),
+  rechazarPendiente: (boardId: string, usuarioId: string) =>
+    request<void>(`/api/boards/${boardId}/pendientes/${encodeURIComponent(usuarioId)}/rechazar`, {
+      method: 'POST',
+    }),
+
   getDiagram: (id: string) => request<{ id: string; doc: DiagramDoc; seq: number }>(`/api/diagrams/${id}`),
   getOps: (id: string, since = 0) => request<unknown[]>(`/api/diagrams/${id}/ops?since=${since}`),
 
