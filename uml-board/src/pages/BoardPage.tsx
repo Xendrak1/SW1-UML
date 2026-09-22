@@ -77,7 +77,7 @@ const BoardPage = () => {
   const [isPromptOpen, setIsPromptOpen] = useState(false);
 
   // Boards colaborativos desde Supabase
-  const { boards, createBoard, deleteBoard, renameBoard } = useBoards();
+  const { boards, isLoading: boardsLoading, createBoard, deleteBoard, renameBoard } = useBoards();
   // La pizarra activa se recuerda entre recargas; si no hay ninguna guardada se
   // toma la primera que devuelva el servidor. Antes habia un id fijo en el codigo,
   // que dejaba de existir al cambiar de base de datos.
@@ -101,6 +101,24 @@ const BoardPage = () => {
     if (currentBoardId) localStorage.setItem('case.boardId', currentBoardId);
   }, [currentBoardId]);
 
+  // Un usuario nuevo no tiene pizarras, y sin una abierta el editor no tiene
+  // donde guardar (las operaciones se descartan) ni sala WebSocket a la que
+  // conectarse: la barra queda en "Sin conexion" para siempre aunque la red y
+  // la sesion esten bien. Se le crea la primera pizarra apenas entra.
+  const [creandoPrimera, setCreandoPrimera] = useState(false);
+  useEffect(() => {
+    if (boardsLoading || boards.length > 0 || creandoPrimera) return;
+    setCreandoPrimera(true);
+    void createBoard('Pizarra 1')
+      .then(id => setCurrentBoardId(id))
+      .catch(err => {
+        // Sin servidor no hay pizarra nueva: se queda en el modo offline con
+        // lo que haya en cache, en vez de reintentar en cada render.
+        console.warn('[boards] no se pudo crear la primera pizarra', err);
+        setCreandoPrimera(false);
+      });
+  }, [boardsLoading, boards.length, creandoPrimera, createBoard]);
+
   // Referencia para evitar bucles infinitos
   const lastDiagramIdRef = useRef<string | null>(null);
 
@@ -119,15 +137,10 @@ const BoardPage = () => {
     cleanupRealtimeSync,
   } = useClassStore();
 
-  console.log('🔧 Component render - currentDiagramId:', currentDiagramId, 'isLoading:', isLoading);
-
   // Sincronizar el store con el diagrama actual
   useEffect(() => {
     if (!currentDiagramId) return;
     if (lastDiagramIdRef.current !== currentDiagramId) {
-      console.log(
-        `🔄 Cambio de diagrama detectado: ${lastDiagramIdRef.current} → ${currentDiagramId}`
-      );
       lastDiagramIdRef.current = currentDiagramId;
       setCurrentDiagram(currentDiagramId);
       loadDiagram(currentDiagramId);
@@ -137,7 +150,6 @@ const BoardPage = () => {
   // Limpiar sincronización colaborativa al desmontar
   useEffect(() => {
     return () => {
-      console.log('🧹 Limpiando sincronización al desmontar BoardPage');
       cleanupRealtimeSync();
     };
   }, [cleanupRealtimeSync]);
@@ -182,7 +194,6 @@ const BoardPage = () => {
       clearTimeout(saveTimeoutRef.current);
     }
     saveTimeoutRef.current = setTimeout(async () => {
-      console.log('💾 Guardado automático ejecutándose...');
       await saveDiagram();
     }, 2000);
   }, [saveDiagram]);
@@ -1049,7 +1060,6 @@ const BoardPage = () => {
           handleCanvasMouseDown(e);
           // Cerrar menú de pizarras al hacer clic en el canvas
           if (showBoardMenu) {
-            console.log('🔸 Closing menu due to canvas click');
             setShowBoardMenu(false);
           }
         }
