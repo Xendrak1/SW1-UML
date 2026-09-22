@@ -58,6 +58,8 @@ interface Store {
 
   // Estado colaborativo, para mostrarlo en la barra de herramientas
   connection: ConnectionStatus;
+  /** Motivo del rechazo del servidor, si la conexion fue rechazada. */
+  connectionMotivo: string | null;
   pendingOps: number;
   participants: Participant[];
   /**
@@ -310,6 +312,7 @@ export const useClassStore = create<Store>((set, get) => {
     isLoading: false,
     error: null,
     connection: 'offline',
+    connectionMotivo: null,
     pendingOps: 0,
     participants: [],
     conflictos: [],
@@ -455,7 +458,8 @@ export const useClassStore = create<Store>((set, get) => {
         onSnapshot: doc => applySnapshot(doc),
         onRemoteOps: ops => ops.forEach(applyRemote),
         onPresence: participants => set({ participants }),
-        onStatus: (connection, pending) => set({ connection, pendingOps: pending }),
+        onStatus: (connection, pending, motivo) =>
+          set({ connection, pendingOps: pending, connectionMotivo: motivo ?? null }),
       });
 
       // Si no hubo cache ni llego snapshot todavia, dejamos de mostrar el cargando

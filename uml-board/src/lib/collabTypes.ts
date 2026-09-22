@@ -65,7 +65,13 @@ export interface Participant {
   rol?: string;
 }
 
-export type ConnectionStatus = 'connecting' | 'online' | 'offline';
+/**
+ * "rechazado" no es lo mismo que "offline" y por eso es un estado aparte: el
+ * servidor esta ahi y contesta, lo que dijo es que NO con un motivo. Mostrar
+ * "Sin conexion" en ese caso manda al usuario a revisar su internet cuando el
+ * problema es su sesion o sus permisos, y encima reintenta para siempre.
+ */
+export type ConnectionStatus = 'connecting' | 'online' | 'offline' | 'rechazado';
 
 export type ServerMessage =
   | { type: 'snapshot'; diagramId: string; doc: DiagramDoc; seq: number }

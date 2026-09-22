@@ -29,7 +29,7 @@ export interface CollabHandlers {
   onSnapshot: (doc: DiagramDoc, seq: number) => void;
   onRemoteOps: (ops: CommittedOp[]) => void;
   onPresence: (participants: Participant[]) => void;
-  onStatus: (status: ConnectionStatus, pending: number) => void;
+  onStatus: (status: ConnectionStatus, pending: number, motivo?: string | null) => void;
 }
 
 const RECONNECT_BASE_MS = 1000;
@@ -43,6 +43,10 @@ export class CollabClient {
   private seq = 0;
   private attempt = 0;
   private status: ConnectionStatus = 'offline';
+  /** Por que el servidor rechazo la union, si la rechazo. */
+  private motivo: string | null = null;
+  /** Con un rechazo no se reintenta: reintentar no arregla una sesion vencida. */
+  private rechazado = false;
   private heartbeat: ReturnType<typeof setInterval> | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private closedByUs = false;
@@ -55,6 +59,10 @@ export class CollabClient {
     this.handlers = handlers;
     this.closedByUs = false;
     this.attempt = 0;
+    // Un intento nuevo (recarga, o volver a entrar tras un rechazo) arranca sin
+    // el rechazo anterior: si la sesion se renovo, hay que volver a probar.
+    this.rechazado = false;
+    this.motivo = null;
 
     // Antes de tocar la red: mostramos lo que haya en cache, para que la app
     // sea usable de inmediato y tambien sin servidor.
@@ -153,6 +161,7 @@ export class CollabClient {
 
   private open(): void {
     if (!this.diagramId || this.closedByUs) return;
+    if (this.rechazado) return;
     if (this.socket && this.socket.readyState <= WebSocket.OPEN) return;
 
     void this.setStatus('connecting');
@@ -252,9 +261,23 @@ export class CollabClient {
         handlers.onPresence(msg.participants);
         break;
 
-      case 'error':
+      case 'error': {
         console.error('[collab] error del servidor:', msg.message);
+        // Un rechazo de union no se arregla reintentando: la sesion vencio, o
+        // esta pizarra no es suya. Se corta el bucle y se dice el motivo, que
+        // antes quedaba solo en la consola mientras la barra decia "Sin
+        // conexion" para siempre.
+        if (/sesion|acceso|solo lectura/i.test(msg.message)) {
+          this.motivo = msg.message;
+          this.rechazado = true;
+          if (this.reconnectTimer) {
+            clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+          }
+          void this.setStatus('rechazado');
+        }
         break;
+      }
 
       case 'pong':
         break;
@@ -270,7 +293,7 @@ export class CollabClient {
   }
 
   private scheduleReconnect(): void {
-    if (this.closedByUs) return;
+    if (this.closedByUs || this.rechazado) return;
     this.attempt += 1;
     // Backoff exponencial con tope, para no golpear el servidor cuando esta caido.
     const delay = Math.min(RECONNECT_BASE_MS * 2 ** (this.attempt - 1), RECONNECT_MAX_MS);
@@ -285,7 +308,7 @@ export class CollabClient {
   private async reportStatus(): Promise<void> {
     if (!this.handlers || !this.diagramId) return;
     const ops = await pendingOps(this.diagramId);
-    this.handlers.onStatus(this.status, ops.length);
+    this.handlers.onStatus(this.status, ops.length, this.motivo);
   }
 
   /** Guarda el documento actual en cache, para tenerlo disponible sin red. */

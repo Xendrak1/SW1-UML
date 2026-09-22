@@ -15,10 +15,15 @@ const ESTADOS = {
   online: { clase: 'chip chip--ok', texto: 'En línea' },
   connecting: { clase: 'chip chip--warn', texto: 'Conectando' },
   offline: { clase: 'chip chip--danger', texto: 'Sin conexión' },
+  // El servidor contesto que no: no es un problema de internet, y reintentar
+  // no lo arregla. El motivo va en el title y, si es la sesion, se ofrece
+  // volver a entrar.
+  rechazado: { clase: 'chip chip--danger', texto: 'Sin acceso' },
 } as const;
 
 const CollabBar: React.FC = () => {
   const connection = useClassStore(s => s.connection);
+  const motivo = useClassStore(s => s.connectionMotivo);
   const pendingOps = useClassStore(s => s.pendingOps);
   const participants = useClassStore(s => s.participants);
   const conflictos = useClassStore(s => s.conflictos);
@@ -32,10 +37,27 @@ const CollabBar: React.FC = () => {
 
   return (
     <>
-      <span className={estado.clase} title='Conexión con el servidor colaborativo'>
+      <span
+        className={estado.clase}
+        title={motivo ?? 'Conexión con el servidor colaborativo'}
+      >
         <span className='chip__dot' />
         {estado.texto}
       </span>
+
+      {/* Una sesion vencida no se recupera sola reintentando: se recupera
+          volviendo a entrar. Sin esto, el chip rojo no decia que hacer. */}
+      {connection === 'rechazado' && motivo && /sesion/i.test(motivo) && (
+        <button
+          className='btn btn--sm'
+          onClick={() => {
+            cerrarSesion();
+            window.location.reload();
+          }}
+        >
+          Volver a entrar
+        </button>
+      )}
 
       {pendingOps > 0 && (
         <span

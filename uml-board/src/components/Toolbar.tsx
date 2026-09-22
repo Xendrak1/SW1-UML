@@ -153,6 +153,17 @@ const Toolbar: React.FC<ToolbarProps> = props => {
         )}
       </Menu>
 
+      {/* Invitar estaba solo dentro del menu de pizarras y nadie lo encontraba:
+          compartir el enlace es de las acciones mas frecuentes al colaborar. */}
+      <button
+        className='btn btn--ghost'
+        onClick={props.onCopyUrl}
+        title='Copiar enlace para invitar a esta pizarra'
+      >
+        <span style={{ fontSize: 15, lineHeight: 1 }}>⧉</span>
+        <span className='btn__label'>Invitar</span>
+      </button>
+
       <div className='toolbar__sep' />
 
       {/* Acción principal: es la que se usa a cada rato, así que va suelta */}
