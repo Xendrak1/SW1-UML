@@ -1,0 +1,11 @@
+{
+  "appId": "com.sw1.asistente",
+  "appName": "Asistente UML",
+  "webDir": "../uml-board/dist",
+  "bundledWebRuntime": false,
+  "plugins": {
+    "SpeechRecognition": {
+      "language": "es-ES"
+    }
+  }
+}

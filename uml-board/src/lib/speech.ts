@@ -1,19 +1,23 @@
+import { Capacitor } from '@capacitor/core';
+import { SpeechRecognition } from '@capacitor-community/speech-recognition';
+import { TextToSpeech } from '@capacitor-community/text-to-speech';
+
 /**
  * Reconocimiento y sintesis de voz.
  *
- * El reconocimiento ocurre EN EL DISPOSITIVO a traves de la Web Speech API, que en
- * Android e iOS usa el motor de voz del sistema. Eso es lo que pide el enunciado:
- * la app local hace el reconocimiento y entrega el texto; el contexto y la
- * interpretacion los resuelve la capa de IA.
+ * El reconocimiento ocurre EN EL DISPOSITIVO.
+ * - En Capacitor (app móvil), usa el motor nativo vía plugins.
+ * - En la web (PWA), usa la Web Speech API estandar.
  */
 
-// La API no esta en los tipos estandar de TypeScript.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type AnyRecognition = any;
 
-export const speechDisponible = (): boolean =>
-  typeof window !== 'undefined' &&
-  Boolean((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+export const speechDisponible = (): boolean => {
+  if (Capacitor.isNativePlatform()) return true;
+  return typeof window !== 'undefined' &&
+    Boolean((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+};
 
 export interface DictadoHandlers {
   onParcial: (texto: string) => void;
@@ -23,16 +27,76 @@ export interface DictadoHandlers {
 }
 
 const MENSAJES_ERROR: Record<string, string> = {
-  'not-allowed': 'Permiso de micrófono denegado. Habilitalo en los ajustes del navegador.',
-  'service-not-allowed': 'El navegador bloqueó el servicio de voz.',
+  'not-allowed': 'Permiso de micrófono denegado. Habilítalo en los ajustes.',
+  'service-not-allowed': 'El sistema bloqueó el servicio de voz.',
   'no-speech': 'No se escuchó nada. Probá de nuevo.',
   'audio-capture': 'No se encontró micrófono.',
   network: 'El motor de voz necesita conexión en este dispositivo.',
   aborted: '',
 };
 
-/** Crea una sesion de dictado. Devuelve una funcion para detenerla. */
+let capListenerRemover: any = null;
+
 export function iniciarDictado(handlers: DictadoHandlers, continuo = false): () => void {
+  if (Capacitor.isNativePlatform()) {
+    // Implementacion Capacitor (App Movil)
+    let isStopped = false;
+    
+    const startCapacitor = async () => {
+      try {
+        const hasPermission = await SpeechRecognition.checkPermissions();
+        if (hasPermission.speechRecognition !== 'granted') {
+          const requested = await SpeechRecognition.requestPermissions();
+          if (requested.speechRecognition !== 'granted') {
+            handlers.onError('Permiso de micrófono denegado');
+            return;
+          }
+        }
+        
+        if (capListenerRemover) capListenerRemover.remove();
+        capListenerRemover = await SpeechRecognition.addListener('partialResults', (data: any) => {
+          if (data.matches && data.matches.length > 0) {
+            handlers.onParcial(data.matches[0]);
+          }
+        });
+
+        await SpeechRecognition.start({
+          language: 'es-ES',
+          partialResults: true,
+          popup: false,
+        });
+
+        // Simulamos un onFin despues de un tiempo o cuando se detiene, porque el plugin
+        // a veces no lanza el evento cuando el usuario deja de hablar.
+        setTimeout(() => {
+          if (!isStopped) detener();
+        }, 8000);
+
+      } catch (e) {
+        handlers.onError('Error en SpeechRecognition: ' + (e as Error).message);
+      }
+    };
+
+    const detener = async () => {
+      if (isStopped) return;
+      isStopped = true;
+      try {
+        await SpeechRecognition.stop();
+        if (capListenerRemover) {
+          capListenerRemover.remove();
+          capListenerRemover = null;
+        }
+        handlers.onFin();
+      } catch (e) {
+        // ignorar
+      }
+    };
+
+    startCapacitor();
+    return detener;
+  }
+
+  // Implementacion Web (PWA/Browser)
   const Ctor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
   if (!Ctor) {
     handlers.onError('Este navegador no soporta reconocimiento de voz.');
@@ -81,8 +145,18 @@ export function iniciarDictado(handlers: DictadoHandlers, continuo = false): () 
   };
 }
 
-/** Respuesta hablada: es la unica salida de la app movil, que no tiene interfaz grafica. */
 export function hablar(texto: string): void {
+  if (Capacitor.isNativePlatform()) {
+    TextToSpeech.speak({
+      text: texto,
+      lang: 'es-ES',
+      rate: 1.05,
+      pitch: 1.0,
+      category: 'ambient',
+    }).catch(console.error);
+    return;
+  }
+  
   if (typeof window === 'undefined' || !window.speechSynthesis) return;
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(texto);
@@ -92,5 +166,9 @@ export function hablar(texto: string): void {
 }
 
 export function callar(): void {
+  if (Capacitor.isNativePlatform()) {
+    TextToSpeech.stop().catch(console.error);
+    return;
+  }
   window.speechSynthesis?.cancel();
 }
