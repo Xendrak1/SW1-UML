@@ -1,10 +1,44 @@
+import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Pool } from 'pg';
+import { Pool, type PoolConfig } from 'pg';
 import { config } from './config.js';
 
-export const pool = new Pool({ connectionString: config.databaseUrl });
+/**
+ * Configuracion TLS del pool. Ver config.databaseSsl para el porque.
+ *
+ * Tambien se activa si la propia cadena de conexion trae sslmode=require, que
+ * es como lo escriben casi todos los proveedores en el panel: si no se mirara,
+ * alguien pegaria la URL del proveedor y la conexion fallaria sin motivo claro.
+ */
+function tlsDeLaBase(): PoolConfig['ssl'] {
+  const loPideLaUrl = /[?&]sslmode=(require|verify-ca|verify-full)/.test(config.databaseUrl);
+  if (!config.databaseSsl && !loPideLaUrl) return undefined;
+
+  if (config.databaseCaFile !== '') {
+    try {
+      return { ca: readFileSync(resolve(process.cwd(), config.databaseCaFile), 'utf8') };
+    } catch (err) {
+      throw new Error(
+        `No se pudo leer DATABASE_CA_FILE (${config.databaseCaFile}): ` +
+          `${err instanceof Error ? err.message : err}`
+      );
+    }
+  }
+
+  console.warn(
+    '[db] TLS activo pero sin certificado de la autoridad: la conexion va cifrada y NO se ' +
+      'verifica la identidad del servidor. Para cerrar eso, descarga el certificado de tu ' +
+      'proveedor y apunta DATABASE_CA_FILE a el.'
+  );
+  return { rejectUnauthorized: false };
+}
+
+export const pool = new Pool({
+  connectionString: config.databaseUrl,
+  ssl: tlsDeLaBase(),
+});
 
 const here = dirname(fileURLToPath(import.meta.url));
 

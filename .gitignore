@@ -554,3 +554,6 @@ server/uploads/
 # Salidas de herramientas y capturas de trabajo
 Claude outputs/
 scratchpad/
+
+# Notas de sesion con credenciales pegadas a mano: nunca al repo
+CONTEXTO-PARA-TERMINAL.md

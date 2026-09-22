@@ -27,6 +27,21 @@ export const config = {
     process.env.DATABASE_URL ?? 'postgresql://case_user:case_pass@localhost:5433/case_db',
   uploadDir: process.env.UPLOAD_DIR ?? './uploads',
   /**
+   * TLS contra la base de datos.
+   *
+   * Hace falta en cualquier Postgres administrado con IP publica (RDS de AWS,
+   * Cloud SQL por IP, Neon, Supabase): rechazan la conexion sin cifrar, o la
+   * aceptan en claro, que es peor. En local, con Postgres en la misma maquina o
+   * por socket unix, no se usa.
+   *
+   * DATABASE_CA_FILE es el certificado de la autoridad del proveedor. Sin el,
+   * la conexion va cifrada pero NO se verifica la identidad del servidor, asi
+   * que un atacante en el medio podria hacerse pasar por la base. El servidor
+   * avisa por consola cuando queda en ese modo.
+   */
+  databaseSsl: process.env.DATABASE_SSL === 'true',
+  databaseCaFile: process.env.DATABASE_CA_FILE ?? '',
+  /**
    * Carpeta con el frontend ya compilado. Si esta definida, el mismo proceso
    * sirve la API y la aplicacion.
    *
