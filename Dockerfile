@@ -11,7 +11,9 @@ COPY uml-board/package*.json ./
 RUN npm ci
 COPY uml-board/ ./
 # La API queda en el mismo origen, asi que la URL base es relativa.
-ENV VITE_API_URL=""
+# "/" es el centinela de mismo-origen (env.ts lo normaliza a cadena vacia);
+# se usa un valor no vacio para que Vite no lo descarte al construir.
+ENV VITE_API_URL="/"
 RUN npm run build
 
 # ------------------------------------------------------------------ backend
