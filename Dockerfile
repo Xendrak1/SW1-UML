@@ -13,6 +13,10 @@ COPY uml-board/ ./
 # La API queda en el mismo origen, asi que la URL base es relativa.
 # "/" es el centinela de mismo-origen (env.ts lo normaliza a cadena vacia);
 # se usa un valor no vacio para que Vite no lo descarte al construir.
+# El limite de memoria de Node se fija a mano: la instancia que construye
+# la imagen tiene 1 GB, y sin tope el recolector de basura de Node crece hasta
+# quedarse sin memoria en vez de recolectar.
+ENV NODE_OPTIONS=--max-old-space-size=768
 ENV VITE_API_URL="/"
 RUN npm run build
 
@@ -22,6 +26,10 @@ WORKDIR /app/server
 COPY server/package*.json ./
 RUN npm ci
 COPY server/ ./
+# El limite de memoria de Node se fija a mano: la instancia que construye
+# la imagen tiene 1 GB, y sin tope el recolector de basura de Node crece hasta
+# quedarse sin memoria en vez de recolectar.
+ENV NODE_OPTIONS=--max-old-space-size=768
 RUN npm run build
 
 # -------------------------------------------------------------- imagen final
