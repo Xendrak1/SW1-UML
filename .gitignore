@@ -557,3 +557,8 @@ scratchpad/
 
 # Notas de sesion con credenciales pegadas a mano: nunca al repo
 CONTEXTO-PARA-TERMINAL.md
+
+# Elastic Beanstalk Files
+.elasticbeanstalk/*
+!.elasticbeanstalk/*.cfg.yml
+!.elasticbeanstalk/*.global.yml
