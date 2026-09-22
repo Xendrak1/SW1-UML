@@ -63,6 +63,8 @@ export interface Participant {
   desde?: number;
   /** Rol sobre la pizarra: propietario, editor o lector. */
   rol?: string;
+  /** Id del usuario si esta autenticado, util para expulsarlo. */
+  usuarioId?: string;
 }
 
 /**

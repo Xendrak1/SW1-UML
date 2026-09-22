@@ -179,6 +179,20 @@ const CollabBar: React.FC<{ boardId: string }> = (props) => {
                 {p.selection && p.clientId !== identity.clientId && (
                   <span className='menu__hint'>editando</span>
                 )}
+                {esAnfitrion && p.clientId !== identity.clientId && p.usuarioId && (
+                  <button
+                    className='btn btn--ghost btn--sm btn--icon btn--danger'
+                    title='Expulsar'
+                    onClick={() => {
+                      if (window.confirm(`¿Expulsar a ${p.name}?`)) {
+                        api.expulsarMiembro(props.boardId, p.usuarioId!).catch(console.error);
+                      }
+                    }}
+                    style={{ marginLeft: 8 }}
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
             ))}
 

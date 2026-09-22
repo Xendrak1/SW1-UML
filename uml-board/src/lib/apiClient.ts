@@ -114,6 +114,10 @@ export const api = {
     request<void>(`/api/boards/${boardId}/pendientes/${encodeURIComponent(usuarioId)}/rechazar`, {
       method: 'POST',
     }),
+  expulsarMiembro: (boardId: string, usuarioId: string) =>
+    request<void>(`/api/boards/${boardId}/miembros/${encodeURIComponent(usuarioId)}`, {
+      method: 'DELETE',
+    }),
 
   getDiagram: (id: string) => request<{ id: string; doc: DiagramDoc; seq: number }>(`/api/diagrams/${id}`),
   getOps: (id: string, since = 0) => request<unknown[]>(`/api/diagrams/${id}/ops?since=${since}`),

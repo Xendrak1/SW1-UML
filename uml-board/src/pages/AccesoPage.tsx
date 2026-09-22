@@ -69,14 +69,24 @@ const AccesoPage: React.FC<Props> = ({ onEntrar }) => {
     setEnviando(true);
     try {
       let usuario: Usuario;
+      let targetBoard: string | undefined;
       if (modo === 'login') {
-        usuario = await iniciarSesion(correo, password);
-        // Quien ya tenia cuenta y llego por un enlace: el alta en la pizarra la
-        // hace el registro, asi que para el login hay que pedirla aparte.
-        if (invitacion) await api.aceptarInvitacion(invitacion).catch(() => undefined);
+        const res = await iniciarSesion(correo, password);
+        usuario = res.usuario;
+        if (invitacion) {
+          const invRes = await api.aceptarInvitacion(invitacion).catch(() => undefined);
+          if (invRes?.boardId) targetBoard = invRes.boardId;
+        }
       } else {
-        usuario = await registrarse(nombre, correo, password, codigo, invitacion ?? undefined);
+        const res = await registrarse(nombre, correo, password, codigo, invitacion ?? undefined);
+        usuario = res.usuario;
+        if (res.boardId) targetBoard = res.boardId;
       }
+      
+      if (targetBoard) {
+        localStorage.setItem('case.boardId', targetBoard);
+      }
+
       // Se limpia la URL: recargar no tiene que volver a gastar la invitacion.
       if (invitacion) window.history.replaceState({}, '', window.location.pathname);
       onEntrar(usuario);

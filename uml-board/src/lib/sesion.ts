@@ -65,19 +65,20 @@ export function cerrarSesion(): void {
   }
 }
 
-async function pedir(ruta: string, cuerpo: unknown): Promise<Usuario> {
+async function pedir(ruta: string, cuerpo: unknown): Promise<{ usuario: Usuario; boardId?: string }> {
   const res = await fetch(`${API_URL}${ruta}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(cuerpo),
   });
-  const datos = (await res.json().catch(() => ({}))) as Partial<Guardado> & { error?: string };
+  const datos = (await res.json().catch(() => ({}))) as Partial<Guardado> & { error?: string; pizarra?: string };
   if (!res.ok) throw new Error(datos.error ?? `Error ${res.status}`);
   if (!datos.token || !datos.usuario) throw new Error('El servidor no devolvio la sesion');
-  return guardar({ token: datos.token, usuario: datos.usuario });
+  const u = guardar({ token: datos.token, usuario: datos.usuario });
+  return { usuario: u, boardId: datos.pizarra };
 }
 
-export const iniciarSesion = (correo: string, password: string): Promise<Usuario> =>
+export const iniciarSesion = (correo: string, password: string): Promise<{ usuario: Usuario; boardId?: string }> =>
   pedir('/api/auth/login', { correo, password });
 
 /**
@@ -91,7 +92,7 @@ export const registrarse = (
   password: string,
   codigo?: string,
   invitacion?: string
-): Promise<Usuario> =>
+): Promise<{ usuario: Usuario; boardId?: string }> =>
   pedir('/api/auth/registro', { nombre, correo, password, codigo, invitacion });
 
 /**

@@ -376,3 +376,42 @@ boardsRouter.get('/boards/:id/mi-rol', async (req, res, next) => {
     next(err);
   }
 });
+
+boardsRouter.delete('/boards/:id/miembros/:uid', async (req, res, next) => {
+  try {
+    const usuarioId = idDe(req);
+    if (!usuarioId) {
+      res.status(401).json({ error: 'Necesitas iniciar sesion' });
+      return;
+    }
+    const acceso = await accesoAPizarra(String(req.params.id), usuarioId);
+    if (!acceso || !acceso.esPropietario) {
+      res.status(403).json({ error: 'Solo el anfitrion puede expulsar participantes' });
+      return;
+    }
+    // No se puede echar a uno mismo
+    if (usuarioId === req.params.uid) {
+      res.status(400).json({ error: 'No puedes expulsarte a ti mismo' });
+      return;
+    }
+    await pool.query(
+      `DELETE FROM board_members
+        WHERE board_id = $1 AND usuario_id = $2`,
+      [req.params.id, req.params.uid]
+    );
+
+    // Expulsar al usuario del websocket activo
+    const { kickParticipant } = await import('../ws.js');
+    const { rows } = await pool.query<{ diagram_id: string }>(
+      'SELECT diagram_id FROM boards WHERE id = $1',
+      [req.params.id]
+    );
+    if (rows.length > 0) {
+      kickParticipant(rows[0].diagram_id, req.params.uid);
+    }
+
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});

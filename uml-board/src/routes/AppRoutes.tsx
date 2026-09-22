@@ -26,9 +26,30 @@ const AppRoutes: React.FC = () => {
 
   useEffect(() => {
     let vivo = true;
-    void validarSesion().then(u => {
+    void validarSesion().then(async u => {
       if (!vivo) return;
       setUsuario(u);
+      
+      // Si el usuario ya estaba autenticado y llego por un enlace de invitacion,
+      // la aceptamos automaticamente y saltamos a esa pizarra.
+      if (u) {
+        const params = new URLSearchParams(window.location.search);
+        const invitacion = params.get('invitacion');
+        if (invitacion) {
+          try {
+            // Se importa api dinamicamente para no ensuciar las dependencias globales si no hace falta, 
+            // o simplemente usamos import arriba. Wait, we need to import `api` from '../lib/apiClient'.
+            // I'll add the import above in a separate replacement if needed, but for now I'll just use window.fetch or import api.
+            const { api } = await import('../lib/apiClient');
+            const res = await api.aceptarInvitacion(invitacion);
+            localStorage.setItem('case.boardId', res.boardId);
+            window.history.replaceState({}, '', window.location.pathname);
+          } catch (err) {
+            console.error('Error al aceptar invitacion con sesion activa:', err);
+          }
+        }
+      }
+      
       setVerificando(false);
     });
     return () => {

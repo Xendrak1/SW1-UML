@@ -49,6 +49,7 @@ function participantsOf(diagramId: string): Participant[] {
       desde: s.desde,
       rol: s.rol,
       esAnfitrion: false,
+      usuarioId: s.usuarioId ?? undefined,
     });
   }
 
@@ -65,6 +66,20 @@ function participantsOf(diagramId: string): Participant[] {
 
 const announcePresence = (diagramId: string) =>
   broadcast(diagramId, { type: 'presence', participants: participantsOf(diagramId) });
+
+export function kickParticipant(diagramId: string, usuarioId: string): void {
+  for (const s of [...sessions]) {
+    if (s.diagramId === diagramId && s.usuarioId === usuarioId) {
+      send(s.socket, {
+        type: 'error',
+        message: 'Has sido expulsado de la pizarra',
+      });
+      s.socket.close();
+      sessions.delete(s);
+    }
+  }
+  announcePresence(diagramId);
+}
 
 /** Si el cliente esta demasiado atras, sale mas barato mandarle el documento completo. */
 const CATCHUP_LIMIT = 500;
