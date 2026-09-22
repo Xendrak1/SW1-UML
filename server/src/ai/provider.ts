@@ -12,6 +12,54 @@ export interface ChatRequest {
   numPredict?: number;
 }
 
+/**
+ * De donde sale el modelo para ESTA peticion.
+ *
+ * Existe para que cada usuario pueda poner su propia clave en la interfaz en vez
+ * de depender de una sola clave del servidor. La clave llega por cabecera, se
+ * usa en la llamada y se descarta: no se escribe en la base ni en el log. Si el
+ * credito de una clave se agota, es problema de ese usuario y no tumba la IA
+ * para todos, que es lo que pasaba con la clave unica del entorno.
+ */
+export interface Motor {
+  apiKey: string;
+  baseUrl?: string;
+  modelo?: string;
+  modeloVision?: string;
+}
+
+/**
+ * La URL del proveedor la elige el usuario, asi que hay que acotarla: sin esto,
+ * el servidor se convierte en un proxy para pedir cualquier cosa desde su red
+ * (SSRF). Solo https y nada de direcciones internas.
+ */
+export function validarBaseUrl(url: string): string {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    throw new Error('La URL del proveedor de IA no es valida');
+  }
+  if (u.protocol !== 'https:') {
+    throw new Error('La URL del proveedor de IA tiene que ser https');
+  }
+  const host = u.hostname.toLowerCase();
+  const privada =
+    host === 'localhost' ||
+    host === '::1' ||
+    host.endsWith('.localhost') ||
+    host.endsWith('.internal') ||
+    /^127\./.test(host) ||
+    /^10\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^169\.254\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+  if (privada) {
+    throw new Error('La URL del proveedor de IA no puede apuntar a una direccion interna');
+  }
+  return u.toString();
+}
+
 export interface ChatResult {
   text: string;
   /** Que proveedor respondio de verdad. La UI lo muestra para que se vea local vs nube. */
@@ -134,9 +182,18 @@ async function pedirAOllama(model: string, req: ChatRequest): Promise<any> {
 
 // ---------------- OpenAI (IA en la nube) ----------------
 
-async function openaiChat(req: ChatRequest): Promise<ChatResult> {
-  if (!config.ai.openaiApiKey) throw new Error('OPENAI_API_KEY no configurada');
-  const model = req.imageBase64 ? config.ai.openaiVisionModel : config.ai.openaiModel;
+async function openaiChat(req: ChatRequest, motor?: Motor): Promise<ChatResult> {
+  const apiKey = motor?.apiKey || config.ai.openaiApiKey;
+  if (!apiKey) {
+    throw new Error(
+      'No hay clave de IA. Ponela en Ajustes de IA dentro de la aplicacion, ' +
+        'o configura OPENAI_API_KEY en el servidor.'
+    );
+  }
+  const baseUrl = motor?.baseUrl ? validarBaseUrl(motor.baseUrl) : config.ai.openaiBaseUrl;
+  const model = req.imageBase64
+    ? motor?.modeloVision || motor?.modelo || config.ai.openaiVisionModel
+    : motor?.modelo || config.ai.openaiModel;
 
   const userContent = req.imageBase64
     ? [
@@ -145,11 +202,11 @@ async function openaiChat(req: ChatRequest): Promise<ChatResult> {
       ]
     : req.user;
 
-  const data = await fetchJson('https://api.openai.com/v1/chat/completions', {
+  const data = await fetchJson(baseUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.ai.openaiApiKey}`,
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
       model,
@@ -180,8 +237,12 @@ async function openaiChat(req: ChatRequest): Promise<ChatResult> {
  * El respaldo importa el dia de la defensa: si el modelo local no arranca, la
  * demostracion no se cae.
  */
-export async function chat(req: ChatRequest): Promise<ChatResult> {
+export async function chat(req: ChatRequest, motor?: Motor): Promise<ChatResult> {
   const { strategy } = config.ai;
+
+  // Con clave propia del usuario no hay estrategia que decidir: el Ollama del
+  // servidor no es lo que pidio, asi que se va derecho a su proveedor.
+  if (motor?.apiKey) return openaiChat(req, motor);
 
   if (strategy === 'cloud') return openaiChat(req);
   if (strategy === 'local') return ollamaChat(req);

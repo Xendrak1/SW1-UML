@@ -77,3 +77,26 @@ CREATE TABLE IF NOT EXISTS board_members (
 );
 
 CREATE INDEX IF NOT EXISTS board_members_por_usuario ON board_members (usuario_id);
+
+-- Invitaciones por pizarra: el anfitrion genera un enlace y quien lo abre crea
+-- su cuenta y queda como miembro de ESA pizarra.
+--
+-- Reemplaza al codigo de registro global, que era un parche: uno solo para todo
+-- el sistema, que no caduca, que hay que repartir a mano y que si se filtra hay
+-- que cambiar en la configuracion del servidor. Una invitacion nace de una
+-- pizarra concreta, tiene dueno, vence y se puede revocar.
+CREATE TABLE IF NOT EXISTS board_invites (
+  token      TEXT PRIMARY KEY,
+  board_id   TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+  -- Con que rol entra quien use el enlace.
+  rol        TEXT NOT NULL DEFAULT 'editor',
+  creada_por UUID REFERENCES usuarios(id) ON DELETE SET NULL,
+  expira_en  TIMESTAMPTZ NOT NULL,
+  -- 0 = sin limite. Un enlace de un solo uso sirve para invitar a una persona.
+  usos_max   INTEGER NOT NULL DEFAULT 0,
+  usos       INTEGER NOT NULL DEFAULT 0,
+  revocada   BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS board_invites_por_pizarra ON board_invites (board_id);

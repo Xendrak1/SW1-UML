@@ -1,242 +1,139 @@
-import { Router, type Response } from 'express';
+import { Router, type Request, type Response } from 'express';
 import multer from 'multer';
+import { randomUUID } from 'node:crypto';
 import { config } from '../config.js';
 import {
-  IMAGE_TO_UML_SYSTEM,
-  IMAGE_TO_UML_USER,
-  REPAIR_SYSTEM,
-  UML_ACTIONS_SYSTEM,
-  umlActionsUser,
-} from '../ai/prompts.js';
-import {
-  MAX_CLASES_DOMINIO,
-  UML_DOMAIN_CLASSES_SYSTEM,
-  UML_DOMAIN_RELATIONS_SYSTEM,
-  esPeticionDeDominio,
-  minimoSolicitado,
-  umlDomainClassesUser,
-  umlDomainFaltantesUser,
-  umlDomainRelationsUser,
-} from '../ai/promptsDominio.js';
+  flujoDeInstruccion,
+  flujoImagen,
+  flujoPregunta,
+  type Flujo,
+  type Peticion,
+  type Resultado,
+} from '../ai/flujos.js';
 import {
   ModeloNoInstaladoError,
   aiStatus,
   chat,
   type ChatResult,
+  type Motor,
 } from '../ai/provider.js';
-import {
-  parseJsonLoose,
-  rescatarAccionesParciales,
-  rescatarClasesParciales,
-  rescatarRelacionesParciales,
-  validarAcciones,
-  validarDiagramaReconocido,
-} from '../ai/validate.js';
+import { validarAcciones, validarDiagramaReconocido } from '../ai/validate.js';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 12 * 1024 * 1024 } });
 
 /**
- * Pide al modelo, y si la respuesta no es JSON valido lo intenta reparar una vez
- * pasandole su propia salida. Un modelo local de 7B falla el formato cada tanto;
- * un reintento de reparacion recupera la mayoria de esos casos y sale mucho mas
- * barato que hacer que el usuario repita la instruccion.
+ * La clave de IA del usuario, si la mando.
+ *
+ * Viaja por cabecera y no por el cuerpo para que no termine nunca en un log de
+ * peticiones ni en el historial de una herramienta que registre los JSON. Se
+ * usa para la llamada y se olvida: no se guarda en la base.
  */
-/** Como rescatar una respuesta truncada segun lo que se pidio. */
-type Rescate = { clave: 'actions' | 'classes' | 'relations'; extraer: (t: string) => unknown[] };
-
-const RESCATE_ACCIONES: Rescate = { clave: 'actions', extraer: rescatarAccionesParciales };
-const RESCATE_CLASES: Rescate = { clave: 'classes', extraer: rescatarClasesParciales };
-const RESCATE_RELACIONES: Rescate = { clave: 'relations', extraer: rescatarRelacionesParciales };
-
-async function pedirJson(
-  system: string,
-  user: string,
-  imageBase64?: string,
-  numCtx?: number,
-  rescate: Rescate = RESCATE_ACCIONES
-): Promise<{ parsed: unknown; result: ChatResult; reparado: boolean; rescatado: boolean }> {
-  const result = await chat({ system, user, imageBase64, numCtx });
-  try {
-    return { parsed: parseJsonLoose(result.text), result, reparado: false, rescatado: false };
-  } catch (primerError) {
-    console.warn(
-      '[ai] respuesta mal formada:',
-      primerError instanceof Error ? primerError.message : primerError
-    );
-
-    // Antes de gastar otra llamada: si la respuesta se corto a mitad del JSON
-    // (lo tipico al pedir un dominio completo), las acciones ya cerradas sirven.
-    const rescatadas = rescate.extraer(result.text);
-    if (rescatadas.length > 0) {
-      console.warn(
-        `[ai] respuesta truncada, rescatado(s) ${rescatadas.length} elemento(s) completos (${rescate.clave})`
-      );
-      return {
-        parsed: { [rescate.clave]: rescatadas },
-        result,
-        reparado: false,
-        rescatado: true,
-      };
-    }
-
-    const reparacion = await chat({
-      system: REPAIR_SYSTEM,
-      user: `Texto a corregir:\n\n${result.text.slice(0, 4000)}`,
-    });
-    // Si la reparacion tambien falla, propaga el error con la respuesta original,
-    // que es la que le sirve al usuario para entender que paso.
-    return { parsed: parseJsonLoose(reparacion.text), result, reparado: true, rescatado: false };
-  }
+function motorDeCabeceras(req: Request): Motor | undefined {
+  const clave = String(req.header('x-ia-clave') ?? '').trim();
+  if (clave === '') return undefined;
+  const texto = (n: string): string | undefined => {
+    const v = String(req.header(n) ?? '').trim();
+    return v === '' ? undefined : v;
+  };
+  return {
+    apiKey: clave,
+    baseUrl: texto('x-ia-base-url'),
+    modelo: texto('x-ia-modelo'),
+    modeloVision: texto('x-ia-modelo-vision'),
+  };
 }
 
 /**
- * Modo dominio en dos etapas.
+ * Conduce un flujo llamando al proveedor del servidor (o al del usuario).
  *
- * Un 7B no sostiene un JSON de treinta y cinco acciones: se pierde, repite
- * clases, inventa relaciones con clases que nunca creo, o se corta. Partirlo
- * en dos llamadas cortas lo cambia todo, y la segunda recibe la lista REAL de
- * clases de la primera en vez de lo que el modelo crea recordar.
- *
- * Si la etapa 1 devuelve menos clases que el minimo pedido, se pide una vez mas
- * solo lo que falta. Si la etapa 2 falla, se devuelven igual las clases: un
- * modelo sin relaciones se arregla a mano en un minuto, perder el modelo entero
- * no.
+ * Es uno de los dos conductores posibles; el otro es el navegador, que va paso
+ * a paso por HTTP para poder hablarle al Ollama de su propia maquina.
  */
-async function modelarDominio(
-  prompt: string,
-  classes: unknown
-): Promise<{
-  parsed: unknown;
-  result: ChatResult;
-  reparado: boolean;
-  rescatado: boolean;
-  etapas: string[];
-}> {
-  const existentes = Array.isArray(classes)
-    ? (classes as Array<{ nombre?: string; label?: string }>)
-        .map(c => c?.nombre ?? c?.label)
-        .filter((x): x is string => Boolean(x))
-    : [];
-  const minimo = minimoSolicitado(prompt);
-  const etapas: string[] = [];
-
-  // ---- Etapa 1: clases con sus atributos ----
-  const e1 = await pedirJson(
-    UML_DOMAIN_CLASSES_SYSTEM.replace(
-      'CANTIDAD_DE_CLASES',
-      `Al menos ${minimo} y como maximo ${MAX_CLASES_DOMINIO}`
-    ),
-    umlDomainClassesUser(prompt, existentes, minimo),
-    undefined,
-    12288,
-    RESCATE_CLASES
-  );
-
-  const leerClases = (raw: unknown): Array<Record<string, unknown>> => {
-    const r = (raw ?? {}) as Record<string, unknown>;
-    const lista = Array.isArray(r.classes) ? r.classes : Array.isArray(raw) ? raw : [];
-    return (lista as unknown[]).filter(
-      (c): c is Record<string, unknown> => Boolean(c) && typeof c === 'object'
-    );
+async function conducir(
+  flujo: Flujo,
+  motor?: Motor
+): Promise<{ resultado: Resultado; provider: string; model: string }> {
+  let paso = await flujo.next();
+  let ultimo: ChatResult | undefined;
+  while (!paso.done) {
+    ultimo = await chat(paso.value, motor);
+    paso = await flujo.next(ultimo.text);
+  }
+  return {
+    resultado: paso.value,
+    provider: ultimo?.provider ?? 'desconocido',
+    model: ultimo?.model ?? 'desconocido',
   };
+}
 
-  let clases = leerClases(e1.parsed);
-  etapas.push(`clases=${clases.length}`);
+// ----------------------------------------------- respuestas, una por tipo
 
-  // ---- Etapa 1b: completar si quedo corto ----
-  if (clases.length > 0 && clases.length < minimo) {
-    const nombres = clases.map(c => String(c.label ?? c.name ?? '')).filter(Boolean);
-    try {
-      const e1b = await pedirJson(
-        UML_DOMAIN_CLASSES_SYSTEM.replace(
-          'CANTIDAD_DE_CLASES',
-          `Exactamente ${minimo - clases.length}`
-        ),
-        umlDomainFaltantesUser(prompt, nombres, minimo - clases.length),
-        undefined,
-        12288,
-        RESCATE_CLASES
-      );
-      const extra = leerClases(e1b.parsed).filter(c => {
-        const l = String(c.label ?? c.name ?? '').toLowerCase();
-        return l !== '' && !nombres.some(n => n.toLowerCase() === l);
-      });
-      if (extra.length > 0) {
-        clases = clases.concat(extra);
-        etapas.push(`completadas=+${extra.length}`);
-      }
-    } catch (err) {
-      // Quedarse con las clases de la primera pasada es mejor que fallar.
-      console.warn(
-        '[ai] no se pudo completar las clases faltantes:',
-        err instanceof Error ? err.message : err
-      );
-    }
+function respuestaAcciones(r: Resultado, provider: string, model: string) {
+  const { actions, descartadas } = validarAcciones(r.parsed);
+  if (descartadas.length > 0) {
+    console.warn(
+      `[ai] ${descartadas.length} accion(es) descartada(s):`,
+      descartadas.map(d => d.motivo).join(' | ')
+    );
   }
+  console.log(
+    `[ai] ${actions.length} accion(es) validas via ${provider} (${model}) [modo ${r.modo}]` +
+      (r.etapas.length > 0 ? ` ${r.etapas.join(' ')}` : '') +
+      (r.reparado ? ' [respuesta reparada]' : '') +
+      (r.rescatado ? ' [respuesta truncada, rescatada]' : '')
+  );
+  return {
+    actions,
+    provider,
+    model,
+    modo: r.modo,
+    etapas: r.etapas,
+    reparado: r.reparado,
+    rescatado: r.rescatado,
+    descartadas: descartadas.map(d => d.motivo),
+  };
+}
 
-  if (clases.length > MAX_CLASES_DOMINIO) clases = clases.slice(0, MAX_CLASES_DOMINIO);
-
-  const acciones: unknown[] = clases.map(c => ({ type: 'create', target: 'class', data: c }));
-
-  // ---- Etapa 2: relaciones sobre la lista ya cerrada ----
-  const resumen = clases.map(c => ({
-    label: String(c.label ?? c.name ?? ''),
-    asociativa: c.asociativa === true,
-    relaciona: Array.isArray(c.relaciona) ? (c.relaciona as unknown[]).map(String) : undefined,
-  }));
-
-  let rescatado = e1.rescatado;
-  let reparado = e1.reparado;
-
-  if (resumen.length >= 2) {
-    try {
-      const e2 = await pedirJson(
-        UML_DOMAIN_RELATIONS_SYSTEM,
-        umlDomainRelationsUser(prompt, resumen),
-        undefined,
-        12288,
-        RESCATE_RELACIONES
-      );
-      const r2 = (e2.parsed ?? {}) as Record<string, unknown>;
-      const rels = Array.isArray(r2.relations)
-        ? r2.relations
-        : Array.isArray(r2.actions)
-          ? (r2.actions as Array<Record<string, unknown>>).map(a => a.data ?? a)
-          : [];
-      // Toda relacion que nombre una clase fuera de la lista se tira aca mismo:
-      // es el descarte que antes hacia el validador sin saber por que.
-      const validos = new Set(resumen.map(c => c.label.toLowerCase()));
-      let fuera = 0;
-      for (const rel of rels as Array<Record<string, unknown>>) {
-        const a = String(rel?.sourceLabel ?? rel?.source ?? rel?.from ?? '').toLowerCase();
-        const b = String(rel?.targetLabel ?? rel?.target ?? rel?.to ?? '').toLowerCase();
-        if (!validos.has(a) || !validos.has(b)) {
-          fuera += 1;
-          continue;
-        }
-        acciones.push({ type: 'create', target: 'edge', data: rel });
-      }
-      const cuantas = acciones.length - clases.length;
-      etapas.push(`relaciones=${cuantas}`);
-      if (cuantas === 0) {
-        console.warn(
-          '[ai] la etapa de relaciones no devolvio ninguna relacion valida: ' +
-            'el modelo quedo con las clases sueltas y hay que relacionarlas a mano.'
-        );
-      }
-      if (fuera > 0) etapas.push(`relaciones_fuera_de_lista=${fuera}`);
-      reparado = reparado || e2.reparado;
-      rescatado = rescatado || e2.rescatado;
-    } catch (err) {
-      console.warn(
-        '[ai] la etapa de relaciones fallo, se devuelven solo las clases:',
-        err instanceof Error ? err.message : err
-      );
-      etapas.push('relaciones=fallo');
-    }
+function respuestaImagen(r: Resultado, provider: string, model: string) {
+  const { classes, relations, descartadas } = validarDiagramaReconocido(r.parsed);
+  if (descartadas.length > 0) {
+    console.warn(
+      `[ai] imagen: ${descartadas.length} elemento(s) descartado(s):`,
+      descartadas.map(d => d.motivo).join(' | ')
+    );
   }
+  console.log(
+    `[ai] imagen: ${classes.length} clases y ${relations.length} relaciones via ` +
+      `${provider} (${model})` + (r.reparado ? ' [reparada]' : '')
+  );
+  return {
+    classes,
+    relations,
+    provider,
+    model,
+    reparado: r.reparado,
+    descartadas: descartadas.map(d => d.motivo),
+  };
+}
 
-  return { parsed: { actions: acciones }, result: e1.result, reparado, rescatado, etapas };
+function respuestaPregunta(r: Resultado, provider: string, model: string) {
+  const answer = (r.parsed as { answer?: unknown })?.answer;
+  return {
+    answer:
+      typeof answer === 'string' && answer.trim() !== ''
+        ? answer
+        : 'No encontre eso en la documentacion de la herramienta.',
+    provider,
+    model,
+  };
+}
+
+type TipoFlujo = 'acciones' | 'imagen' | 'pregunta';
+
+function formatear(tipo: TipoFlujo, r: Resultado, provider: string, model: string) {
+  if (tipo === 'acciones') return respuestaAcciones(r, provider, model);
+  if (tipo === 'imagen') return respuestaImagen(r, provider, model);
+  return respuestaPregunta(r, provider, model);
 }
 
 /**
@@ -254,6 +151,10 @@ function responderErrorDeIa(err: unknown, res: Response): boolean {
       modelo: causa?.modelo,
       remedio: causa ? `ollama pull ${causa.modelo}` : undefined,
     });
+    return true;
+  }
+  if (/No hay clave de IA|proveedor de IA/.test(msg)) {
+    res.status(503).json({ error: msg });
     return true;
   }
   if (/fetch failed|ECONNREFUSED/i.test(msg)) {
@@ -290,56 +191,11 @@ aiRouter.post('/uml-actions', async (req, res, next) => {
       res.status(400).json({ error: 'La instruccion es demasiado larga' });
       return;
     }
-
-    // Dos modos. El atomico traduce una instruccion puntual; el de dominio
-    // construye el modelo completo de un negocio en dos etapas.
-    const modoDominio = esPeticionDeDominio(prompt);
-
-    let parsed: unknown;
-    let result: ChatResult;
-    let reparado = false;
-    let rescatado = false;
-    let etapas: string[] = [];
-
-    if (modoDominio) {
-      const dom = await modelarDominio(prompt, classes);
-      parsed = dom.parsed;
-      result = dom.result;
-      reparado = dom.reparado;
-      rescatado = dom.rescatado;
-      etapas = dom.etapas;
-    } else {
-      const uno = await pedirJson(UML_ACTIONS_SYSTEM, umlActionsUser(prompt, classes, relations));
-      parsed = uno.parsed;
-      result = uno.result;
-      reparado = uno.reparado;
-      rescatado = uno.rescatado;
-    }
-
-    const { actions, descartadas } = validarAcciones(parsed);
-
-    if (descartadas.length > 0) {
-      console.warn(`[ai] ${descartadas.length} accion(es) descartada(s):`,
-        descartadas.map(d => d.motivo).join(' | '));
-    }
-    console.log(
-      `[ai] ${actions.length} accion(es) validas via ${result.provider} (${result.model}) ` +
-        `[modo ${modoDominio ? 'dominio' : 'atomico'}]` +
-        (etapas.length > 0 ? ` ${etapas.join(' ')}` : '') +
-        (reparado ? ' [respuesta reparada]' : '') +
-        (rescatado ? ' [respuesta truncada, rescatada]' : '')
+    const { resultado, provider, model } = await conducir(
+      flujoDeInstruccion(prompt, classes, relations),
+      motorDeCabeceras(req)
     );
-
-    res.json({
-      actions,
-      provider: result.provider,
-      model: result.model,
-      modo: modoDominio ? 'dominio' : 'atomico',
-      etapas,
-      reparado,
-      rescatado,
-      descartadas: descartadas.map(d => d.motivo),
-    });
+    res.json(respuestaAcciones(resultado, provider, model));
   } catch (err) {
     if (!responderErrorDeIa(err, res)) next(err);
   }
@@ -353,25 +209,11 @@ aiRouter.post('/ask', async (req, res, next) => {
       res.status(400).json({ error: 'Falta el campo "question"' });
       return;
     }
-
-    const { parsed, result } = await pedirJson(
-      'Sos la guia de usuario de una herramienta CASE de modelado UML. Respondes usando ' +
-        'UNICAMENTE la documentacion que se te entrega. Si la documentacion no cubre la ' +
-        'pregunta, lo decis claramente en vez de inventar funciones que no existen. ' +
-        'Respondes en espanol, en un parrafo corto y concreto. ' +
-        'Devolves UNICAMENTE un objeto JSON con la forma {"answer": "..."}.',
-      `DOCUMENTACION:\n${String(context ?? '').slice(0, 20000)}\n\nPREGUNTA: ${question}`
+    const { resultado, provider, model } = await conducir(
+      flujoPregunta(question, context),
+      motorDeCabeceras(req)
     );
-
-    const answer = (parsed as { answer?: unknown })?.answer;
-    res.json({
-      answer:
-        typeof answer === 'string' && answer.trim() !== ''
-          ? answer
-          : 'No encontre eso en la documentacion de la herramienta.',
-      provider: result.provider,
-      model: result.model,
-    });
+    res.json(respuestaPregunta(resultado, provider, model));
   } catch (err) {
     if (!responderErrorDeIa(err, res)) next(err);
   }
@@ -384,32 +226,156 @@ aiRouter.post('/image-to-uml', upload.single('image'), async (req, res, next) =>
       res.status(400).json({ error: 'Falta el archivo "image"' });
       return;
     }
-
-    const { parsed, result, reparado } = await pedirJson(
-      IMAGE_TO_UML_SYSTEM,
-      IMAGE_TO_UML_USER,
-      req.file.buffer.toString('base64')
+    const { resultado, provider, model } = await conducir(
+      flujoImagen(req.file.buffer.toString('base64')),
+      motorDeCabeceras(req)
     );
+    res.json(respuestaImagen(resultado, provider, model));
+  } catch (err) {
+    if (!responderErrorDeIa(err, res)) next(err);
+  }
+});
 
-    const { classes, relations, descartadas } = validarDiagramaReconocido(parsed);
+// ------------------------------------------------------------------ relevo
+//
+// El navegador conduce el flujo cuando el modelo corre en la maquina DEL
+// USUARIO: el servidor en la nube no puede llegar a un Ollama en localhost, pero
+// el navegador que tiene la pagina abierta si. El servidor sigue decidiendo que
+// se le pregunta al modelo y sigue validando lo que contesta; el navegador solo
+// lleva y trae el texto.
 
-    if (descartadas.length > 0) {
-      console.warn(`[ai] imagen: ${descartadas.length} elemento(s) descartado(s):`,
-        descartadas.map(d => d.motivo).join(' | '));
+interface Sesion {
+  tipo: TipoFlujo;
+  flujo: Flujo;
+  usuario: string;
+  creada: number;
+  /** Cuantas veces se llamo al modelo. Un flujo sano usa entre 1 y 4. */
+  pasos: number;
+}
+
+const SESIONES = new Map<string, Sesion>();
+const VIDA_MS = 10 * 60 * 1000;
+const MAX_PASOS = 8;
+const MAX_SESIONES = 50;
+
+function limpiarSesiones(): void {
+  const limite = Date.now() - VIDA_MS;
+  for (const [id, s] of SESIONES) {
+    if (s.creada < limite) SESIONES.delete(id);
+  }
+}
+
+/** Datos que el navegador necesita para hablarle a su propio modelo. */
+function aPeticionPublica(p: Peticion) {
+  return {
+    system: p.system,
+    user: p.user,
+    imageBase64: p.imageBase64,
+    numCtx: p.numCtx,
+    numPredict: p.numPredict,
+    temperature: p.temperature,
+  };
+}
+
+async function avanzar(
+  id: string,
+  sesion: Sesion,
+  texto: string | undefined,
+  res: Response
+): Promise<void> {
+  const paso = texto === undefined ? await sesion.flujo.next() : await sesion.flujo.next(texto);
+  if (paso.done) {
+    SESIONES.delete(id);
+    res.json({ listo: true, ...formatear(sesion.tipo, paso.value, 'ollama-navegador', 'local') });
+    return;
+  }
+  sesion.pasos += 1;
+  if (sesion.pasos > MAX_PASOS) {
+    SESIONES.delete(id);
+    res.status(500).json({ error: 'El flujo de IA pidio demasiados pasos y se corto' });
+    return;
+  }
+  res.json({ sesion: id, peticion: aPeticionPublica(paso.value) });
+}
+
+function iniciarSesion(tipo: TipoFlujo, flujo: Flujo, req: Request, res: Response): Promise<void> {
+  limpiarSesiones();
+  if (SESIONES.size >= MAX_SESIONES) {
+    res.status(503).json({ error: 'Hay demasiadas conversaciones de IA abiertas, intenta de nuevo' });
+    return Promise.resolve();
+  }
+  const id = randomUUID();
+  const sesion: Sesion = {
+    tipo,
+    flujo,
+    usuario: req.sesion?.sub ?? 'anonimo',
+    creada: Date.now(),
+    pasos: 0,
+  };
+  SESIONES.set(id, sesion);
+  return avanzar(id, sesion, undefined, res);
+}
+
+/** Arranca un flujo conducido por el navegador. Devuelve la primera peticion. */
+aiRouter.post('/relevo/iniciar', async (req, res, next) => {
+  try {
+    const { tipo, prompt, classes = [], relations = [], question, context } = req.body ?? {};
+    if (tipo === 'acciones') {
+      if (typeof prompt !== 'string' || prompt.trim() === '' || prompt.length > 2000) {
+        res.status(400).json({ error: 'Instruccion invalida' });
+        return;
+      }
+      await iniciarSesion('acciones', flujoDeInstruccion(prompt, classes, relations), req, res);
+      return;
     }
-    console.log(
-      `[ai] imagen: ${classes.length} clases y ${relations.length} relaciones via ` +
-        `${result.provider} (${result.model})` + (reparado ? ' [reparada]' : '')
-    );
+    if (tipo === 'pregunta') {
+      if (typeof question !== 'string' || question.trim() === '') {
+        res.status(400).json({ error: 'Falta el campo "question"' });
+        return;
+      }
+      await iniciarSesion('pregunta', flujoPregunta(question, context), req, res);
+      return;
+    }
+    res.status(400).json({ error: 'Tipo de flujo desconocido' });
+  } catch (err) {
+    if (!responderErrorDeIa(err, res)) next(err);
+  }
+});
 
-    res.json({
-      classes,
-      relations,
-      provider: result.provider,
-      model: result.model,
-      reparado,
-      descartadas: descartadas.map(d => d.motivo),
-    });
+/** Igual que el anterior pero para una imagen, que va como multipart. */
+aiRouter.post('/relevo/iniciar-imagen', upload.single('image'), async (req, res, next) => {
+  try {
+    if (!req.file) {
+      res.status(400).json({ error: 'Falta el archivo "image"' });
+      return;
+    }
+    await iniciarSesion('imagen', flujoImagen(req.file.buffer.toString('base64')), req, res);
+  } catch (err) {
+    if (!responderErrorDeIa(err, res)) next(err);
+  }
+});
+
+/** El navegador devuelve lo que contesto su modelo y pide el siguiente paso. */
+aiRouter.post('/relevo/paso', async (req, res, next) => {
+  try {
+    const { sesion: id, texto } = req.body ?? {};
+    if (typeof id !== 'string' || typeof texto !== 'string') {
+      res.status(400).json({ error: 'Faltan "sesion" o "texto"' });
+      return;
+    }
+    limpiarSesiones();
+    const sesion = SESIONES.get(id);
+    if (!sesion) {
+      res.status(404).json({ error: 'La conversacion de IA expiro, volve a intentar' });
+      return;
+    }
+    // Una sesion es de quien la abrio: el id es aleatorio, pero comprobarlo
+    // cuesta una linea y evita que un id filtrado sirva para otra cuenta.
+    if (sesion.usuario !== (req.sesion?.sub ?? 'anonimo')) {
+      res.status(403).json({ error: 'Esa conversacion de IA no es tuya' });
+      return;
+    }
+    await avanzar(id, sesion, texto, res);
   } catch (err) {
     if (!responderErrorDeIa(err, res)) next(err);
   }

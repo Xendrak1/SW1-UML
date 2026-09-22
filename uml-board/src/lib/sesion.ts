@@ -80,12 +80,19 @@ async function pedir(ruta: string, cuerpo: unknown): Promise<Usuario> {
 export const iniciarSesion = (correo: string, password: string): Promise<Usuario> =>
   pedir('/api/auth/login', { correo, password });
 
+/**
+ * Crea la cuenta. Dos formas de estar autorizado a hacerlo: un enlace de
+ * invitacion a una pizarra (lo normal) o el codigo de registro global, si el
+ * despliegue todavia lo tiene puesto.
+ */
 export const registrarse = (
   nombre: string,
   correo: string,
   password: string,
-  codigo?: string
-): Promise<Usuario> => pedir('/api/auth/registro', { nombre, correo, password, codigo });
+  codigo?: string,
+  invitacion?: string
+): Promise<Usuario> =>
+  pedir('/api/auth/registro', { nombre, correo, password, codigo, invitacion });
 
 /**
  * Que pide el servidor para registrarse. Si el despliegue tiene codigo de

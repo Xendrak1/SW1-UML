@@ -48,6 +48,8 @@ export interface ToolbarProps {
   onGenerateFrontend: () => void;
 
   onCopyUrl: () => void;
+  /** Abre los ajustes de IA: de donde sale el modelo (local, nube o nada). */
+  onOpenAjustesIa: () => void;
 }
 
 const Toolbar: React.FC<ToolbarProps> = props => {
@@ -136,6 +138,16 @@ const Toolbar: React.FC<ToolbarProps> = props => {
               }}
             >
               Copiar enlace para invitar
+            </MenuItem>
+            <MenuDivider />
+            <MenuItem
+              icon='✦'
+              onClick={() => {
+                props.onOpenAjustesIa();
+                cerrar();
+              }}
+            >
+              Ajustes de IA
             </MenuItem>
           </>
         )}

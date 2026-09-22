@@ -769,6 +769,100 @@ pre {
   margin-top: 18px;
 }
 
+/* ------------------------------------------------------------ ajustes de IA */
+
+.ajustes__intro {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.ajustes__grupo {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.ajustes__grupo legend {
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+
+.ajustes__opcion {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 0;
+  cursor: pointer;
+}
+
+.ajustes__opcion input {
+  margin-top: 3px;
+  flex: none;
+}
+
+.ajustes__opcion span {
+  display: block;
+}
+
+.ajustes__opcion small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+.ajustes__campo {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 10px;
+  align-items: center;
+  margin: 8px 0;
+  font-size: 13px;
+}
+
+.ajustes__campo input,
+.ajustes__campo select {
+  padding: 7px 9px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.ajustes__estado {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-top: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ajustes__ok {
+  color: var(--ok, #2a9d8f);
+}
+
+.ajustes__mal {
+  color: var(--warn, #c1121f);
+}
+
+.ajustes__estado code {
+  padding: 1px 4px;
+  font-size: 11px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
 /* --------------------------------------------------------- pantalla de acceso */
 
 .acceso {
@@ -777,6 +871,18 @@ pre {
   place-items: center;
   padding: 20px;
   background: var(--bg);
+}
+
+.acceso__invitacion {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-2);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent, #667eea);
+  border-radius: var(--radius-sm);
 }
 
 .acceso__caja {

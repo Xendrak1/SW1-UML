@@ -3,6 +3,7 @@ import { pool } from '../db.js';
 import { hashPassword, verificarPassword } from '../auth/passwords.js';
 import { emitirToken, DURACION_SEGUNDOS } from '../auth/tokens.js';
 import { requiereSesion } from '../auth/middleware.js';
+import { leerInvitacion, usarInvitacion } from '../auth/invitaciones.js';
 import { config } from '../config.js';
 
 export const authRouter = Router();
@@ -32,14 +33,51 @@ authRouter.get('/modo', (_req, res) => {
   res.json({ requiereCodigo: config.auth.codigoRegistro !== '' });
 });
 
+/**
+ * Que hay del otro lado de un enlace de invitacion.
+ *
+ * Va sin sesion a proposito: quien lo abre todavia no tiene cuenta. Devuelve el
+ * nombre de la pizarra -para que vea a que lo invitaron antes de registrarse- y
+ * nada mas. Si el enlace no sirve, la respuesta es la misma sin importar el
+ * motivo: vencido, revocado, agotado o inexistente son lo mismo para afuera.
+ */
+authRouter.get('/invitacion/:token', async (req, res, next) => {
+  try {
+    const inv = await leerInvitacion(String(req.params.token));
+    if (!inv) {
+      res.status(404).json({ error: 'El enlace de invitacion no es valido o ya vencio' });
+      return;
+    }
+    res.json({ pizarra: inv.pizarra, rol: inv.rol, expiraEn: inv.expiraEn });
+  } catch (err) {
+    next(err);
+  }
+});
+
 authRouter.post('/registro', async (req, res, next) => {
   try {
-    // El codigo se valida antes que nada: no tiene sentido calcular un hash de
-    // contrasena, que es caro a proposito, para alguien que no puede registrarse.
-    if (config.auth.codigoRegistro !== '') {
+    // Dos formas de entrar: un enlace de invitacion a una pizarra (lo normal) o
+    // el codigo de registro global, si el despliegue todavia lo tiene puesto.
+    //
+    // Se valida antes que nada porque calcular el hash de la contrasena es caro
+    // a proposito, y no tiene sentido gastarlo en alguien que no puede
+    // registrarse.
+    const invitacionToken = String(req.body?.invitacion ?? '').trim();
+    let invitacion = null;
+    if (invitacionToken !== '') {
+      invitacion = await leerInvitacion(invitacionToken);
+      if (!invitacion) {
+        res.status(403).json({ error: 'El enlace de invitacion no es valido o ya vencio' });
+        return;
+      }
+    } else if (config.auth.codigoRegistro !== '') {
       const codigo = String(req.body?.codigo ?? '').trim();
       if (codigo !== config.auth.codigoRegistro) {
-        res.status(403).json({ error: 'El codigo de registro no es correcto' });
+        res.status(403).json({
+          error:
+            'El codigo de registro no es correcto. Si te invitaron a una pizarra, ' +
+            'entra por el enlace de invitacion en vez de esta pantalla.',
+        });
         return;
       }
     }
@@ -77,10 +115,22 @@ authRouter.post('/registro', async (req, res, next) => {
     }
 
     const u = rows[0];
+
+    // Con invitacion, el alta en la pizarra va junto con la cuenta: si fallara,
+    // el usuario quedaria creado pero sin la pizarra a la que lo invitaron, y no
+    // entenderia por que. Se avisa en la respuesta en vez de romper el registro.
+    let pizarra: string | undefined;
+    if (invitacion) {
+      const usada = await usarInvitacion(invitacion.token, u.id);
+      if (usada) pizarra = usada.boardId;
+      else console.warn('[auth] la invitacion se agoto entre la validacion y el alta');
+    }
+
     res.status(201).json({
       token: emitirToken(u),
       expiraEn: DURACION_SEGUNDOS,
       usuario: { id: u.id, correo: u.correo, nombre: u.nombre, color: u.color },
+      pizarra,
     });
   } catch (err) {
     next(err);

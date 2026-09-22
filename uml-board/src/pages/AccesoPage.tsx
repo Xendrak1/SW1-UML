@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ThemeToggle } from '../lib/theme';
 import { iniciarSesion, modoDeAcceso, registrarse, type Usuario } from '../lib/sesion';
+import { api } from '../lib/apiClient';
 
 /**
  * Pantalla de acceso.
@@ -24,6 +25,12 @@ const AccesoPage: React.FC<Props> = ({ onEntrar }) => {
   const [requiereCodigo, setRequiereCodigo] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  // El enlace de invitacion viaja en la URL: quien lo abre todavia no tiene
+  // cuenta, asi que no puede llegar por ninguna pantalla de adentro.
+  const [invitacion] = useState<string | null>(
+    () => new URLSearchParams(window.location.search).get('invitacion')
+  );
+  const [pizarraInvitada, setPizarraInvitada] = useState<string | null>(null);
 
   // En un despliegue publico el registro puede estar protegido con un codigo.
   useEffect(() => {
@@ -36,15 +43,42 @@ const AccesoPage: React.FC<Props> = ({ onEntrar }) => {
     };
   }, []);
 
+  // Con invitacion se muestra a que pizarra lo invitaron antes de pedirle
+  // nada: registrarse a ciegas, sin saber a donde entra, no invita a nadie.
+  useEffect(() => {
+    if (!invitacion) return;
+    let vivo = true;
+    void api
+      .verInvitacion(invitacion)
+      .then(inv => {
+        if (!vivo) return;
+        setPizarraInvitada(inv.pizarra);
+        setModo('registro');
+      })
+      .catch(() => {
+        if (vivo) setError('El enlace de invitacion no es valido o ya vencio.');
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [invitacion]);
+
   const enviar = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setEnviando(true);
     try {
-      const usuario =
-        modo === 'login'
-          ? await iniciarSesion(correo, password)
-          : await registrarse(nombre, correo, password, codigo);
+      let usuario: Usuario;
+      if (modo === 'login') {
+        usuario = await iniciarSesion(correo, password);
+        // Quien ya tenia cuenta y llego por un enlace: el alta en la pizarra la
+        // hace el registro, asi que para el login hay que pedirla aparte.
+        if (invitacion) await api.aceptarInvitacion(invitacion).catch(() => undefined);
+      } else {
+        usuario = await registrarse(nombre, correo, password, codigo, invitacion ?? undefined);
+      }
+      // Se limpia la URL: recargar no tiene que volver a gastar la invitacion.
+      if (invitacion) window.history.replaceState({}, '', window.location.pathname);
       onEntrar(usuario);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo completar la operación');
@@ -109,7 +143,14 @@ const AccesoPage: React.FC<Props> = ({ onEntrar }) => {
             )}
           </label>
 
-          {modo === 'registro' && requiereCodigo && (
+          {pizarraInvitada && (
+            <p className='acceso__invitacion'>
+              Te invitaron a la pizarra <strong>{pizarraInvitada}</strong>. Crea tu cuenta y
+              entras directo, o inicia sesion si ya tenes una.
+            </p>
+          )}
+
+          {modo === 'registro' && requiereCodigo && !invitacion && (
             <label className='acceso__campo'>
               <span className='muted small'>Código de registro</span>
               <input

@@ -3,6 +3,13 @@ import { pool } from '../db.js';
 import { forgetRoom, getOpsSince, getSnapshot } from '../rooms.js';
 import { plantillaInicial } from '../case/plantillaInicial.js';
 import { accesoADiagrama, accesoAPizarra, registrarMiembro } from '../auth/acceso.js';
+import {
+  crearInvitacion,
+  invitacionesDe,
+  leerInvitacion,
+  revocarInvitacion,
+  usarInvitacion,
+} from '../auth/invitaciones.js';
 
 export const boardsRouter = Router();
 
@@ -163,6 +170,98 @@ boardsRouter.get('/diagrams/:id/ops', async (req, res, next) => {
     }
     const since = Number(req.query.since ?? 0);
     res.json(await getOpsSince(req.params.id, Number.isFinite(since) ? since : 0));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ------------------------------------------------------- enlaces de invitacion
+
+/**
+ * El anfitrion crea un enlace para sumar gente a SU pizarra.
+ *
+ * Solo el propietario: si cualquier editor pudiera generar invitaciones, el
+ * control sobre quien entra dejaria de estar donde el enunciado lo pone, que es
+ * en el anfitrion de la sesion.
+ */
+boardsRouter.post('/boards/:id/invitaciones', async (req, res, next) => {
+  try {
+    const permiso = await exigirPropietario(req.params.id, idDe(req));
+    if (!permiso.ok) {
+      res.status(permiso.estado).json({ error: permiso.error });
+      return;
+    }
+    const inv = await crearInvitacion(req.params.id, idDe(req), {
+      rol: req.body?.rol,
+      dias: req.body?.dias,
+      usosMax: req.body?.usosMax,
+    });
+    res.status(201).json(inv);
+  } catch (err) {
+    next(err);
+  }
+});
+
+/** Las invitaciones vigentes, para que el anfitrion vea y revoque. */
+boardsRouter.get('/boards/:id/invitaciones', async (req, res, next) => {
+  try {
+    const permiso = await exigirPropietario(req.params.id, idDe(req));
+    if (!permiso.ok) {
+      res.status(permiso.estado).json({ error: permiso.error });
+      return;
+    }
+    res.json(await invitacionesDe(req.params.id));
+  } catch (err) {
+    next(err);
+  }
+});
+
+boardsRouter.delete('/boards/:id/invitaciones/:token', async (req, res, next) => {
+  try {
+    const permiso = await exigirPropietario(req.params.id, idDe(req));
+    if (!permiso.ok) {
+      res.status(permiso.estado).json({ error: permiso.error });
+      return;
+    }
+    const quitada = await revocarInvitacion(req.params.id, String(req.params.token));
+    if (!quitada) {
+      res.status(404).json({ error: 'Esa invitacion no existe en esta pizarra' });
+      return;
+    }
+    res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Quien ya tiene cuenta y abre un enlace de invitacion: se suma a la pizarra con
+ * el rol que eligio el anfitrion.
+ *
+ * Hace falta ademas del registro porque no todo el mundo es nuevo: si un
+ * compañero ya tiene cuenta, el enlace tiene que servirle igual, y sin esto
+ * entraria por la puerta de "cualquier autenticado es editor", perdiendo el rol
+ * de lector cuando el anfitrion invito como lector.
+ */
+boardsRouter.post('/invitaciones/:token/aceptar', async (req, res, next) => {
+  try {
+    const usuarioId = idDe(req);
+    if (!usuarioId) {
+      res.status(401).json({ error: 'Necesitas iniciar sesion' });
+      return;
+    }
+    const token = String(req.params.token);
+    const inv = await leerInvitacion(token);
+    if (!inv) {
+      res.status(404).json({ error: 'El enlace de invitacion no es valido o ya vencio' });
+      return;
+    }
+    const usada = await usarInvitacion(token, usuarioId);
+    if (!usada) {
+      res.status(409).json({ error: 'El enlace de invitacion se agoto' });
+      return;
+    }
+    res.json({ boardId: usada.boardId, rol: usada.rol, pizarra: inv.pizarra });
   } catch (err) {
     next(err);
   }

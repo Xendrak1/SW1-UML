@@ -81,5 +81,11 @@ export const config = {
     openaiApiKey: process.env.OPENAI_API_KEY ?? '',
     openaiModel: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
     openaiVisionModel: process.env.OPENAI_VISION_MODEL ?? 'gpt-4o-mini',
+    /**
+     * Endpoint de chat completions. Por defecto el de OpenAI, pero cualquier
+     * gateway compatible (OpenCode Zen, OpenRouter, etc.) sirve con solo
+     * cambiar esta URL y la clave.
+     */
+    openaiBaseUrl: process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1/chat/completions',
   },
 };

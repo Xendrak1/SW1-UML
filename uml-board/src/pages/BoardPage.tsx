@@ -18,6 +18,8 @@ import {
   leerProyectoEa,
   type DiagramaDisponible,
 } from '../services/eaImportService';
+import AjustesIaPanel from '../components/AjustesIaPanel';
+import { api } from '../lib/apiClient';
 import { flowEdgesToUml, flowNodesToUml } from '../lib/flowToUml';
 import { generarFrontend } from '../utils/frontendGenerator';
 import type { NodeChange, EdgeChange } from 'reactflow';
@@ -79,6 +81,7 @@ const BoardPage = () => {
   // La pizarra activa se recuerda entre recargas; si no hay ninguna guardada se
   // toma la primera que devuelva el servidor. Antes habia un id fijo en el codigo,
   // que dejaba de existir al cambiar de base de datos.
+  const [ajustesIaAbiertos, setAjustesIaAbiertos] = useState(false);
   const [currentBoardId, setCurrentBoardId] = useState<string>(
     () => localStorage.getItem('case.boardId') ?? ''
   );
@@ -941,14 +944,39 @@ const BoardPage = () => {
     );
   };
 
+  /**
+   * Genera un enlace de invitacion a ESTA pizarra y lo copia.
+   *
+   * Antes copiaba la URL de la pagina, que a quien la recibia no le servia de
+   * nada: sin cuenta no se entra, y crear una cuenta pedia un codigo que solo
+   * tenia quien administra el servidor. El enlace de invitacion resuelve las dos
+   * cosas de una vez: quien lo abre crea su cuenta y ya queda como miembro.
+   */
   const handleCopyURL = async () => {
+    if (!currentBoardId) {
+      alert('Primero abri o crea una pizarra.');
+      return;
+    }
     try {
-      const currentURL = window.location.href;
-      await navigator.clipboard.writeText(currentURL);
-      alert('✅ URL copiada al portapapeles');
+      const inv = await api.crearInvitacion(currentBoardId, { rol: 'editor' });
+      const enlace = `${window.location.origin}${window.location.pathname}?invitacion=${encodeURIComponent(inv.token)}`;
+      try {
+        await navigator.clipboard.writeText(enlace);
+        alert(
+          `Enlace de invitacion copiado.\n\nEntra como editor y vence el ` +
+            `${new Date(inv.expiraEn).toLocaleDateString()}.\n\n${enlace}`
+        );
+      } catch {
+        // El portapapeles puede estar bloqueado (http sin permiso, o el foco
+        // perdido): el enlace igual tiene que llegar a manos del usuario.
+        window.prompt('Copia este enlace de invitacion:', enlace);
+      }
     } catch (error) {
-      console.error('Error copiando URL:', error);
-      alert('❌ Error al copiar URL');
+      alert(
+        error instanceof Error
+          ? `No se pudo crear la invitacion: ${error.message}`
+          : 'No se pudo crear la invitacion'
+      );
     }
   };
 
@@ -1051,7 +1079,10 @@ const BoardPage = () => {
         onGenerateBackend={handleGenerarBackend}
         onGenerateFrontend={handleGenerarFrontend}
         onCopyUrl={handleCopyURL}
+        onOpenAjustesIa={() => setAjustesIaAbiertos(true)}
       />
+
+      {ajustesIaAbiertos && <AjustesIaPanel onCerrar={() => setAjustesIaAbiertos(false)} />}
 
       <ZoomDock
         zoom={zoom}
