@@ -33,6 +33,9 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=backend /app/server/dist ./dist
 COPY --from=backend /app/server/sql ./sql
 COPY --from=frontend /app/uml-board/dist ./public
+# Certificado de la autoridad de RDS, para validar TLS contra la base sin
+# desactivar la verificacion (ver DATABASE_CA_FILE en server/src/config.ts).
+COPY deploy/rds-global-bundle.pem ./rds-ca.pem
 ENV STATIC_DIR=./public
 # Cloud Run inyecta PORT; el servidor ya lo lee de ahi.
 ENV PORT=8080

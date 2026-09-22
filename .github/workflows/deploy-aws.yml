@@ -1,0 +1,37 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install AWS CLI and EB CLI
+        run: pip install --quiet awscli awsebcli
+
+      - name: Configure AWS credentials
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID"
+          aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY"
+          aws configure set region us-east-1
+          aws sts get-caller-identity
+
+      # La base y el entorno de Elastic Beanstalk se crean una sola vez con
+      # deploy/desplegar-aws.sh (a mano). Este workflow solo redespliega la
+      # aplicacion en el entorno ya existente cada vez que se pushea a main.
+      - name: Deploy to Elastic Beanstalk
+        run: |
+          eb init sw1-uml --platform docker --region us-east-1
+          eb use sw1-uml-env
+          eb deploy sw1-uml-env --timeout 20

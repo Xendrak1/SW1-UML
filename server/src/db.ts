@@ -12,8 +12,9 @@ import { config } from './config.js';
  * es como lo escriben casi todos los proveedores en el panel: si no se mirara,
  * alguien pegaria la URL del proveedor y la conexion fallaria sin motivo claro.
  */
+const loPideLaUrl = /[?&]sslmode=(require|verify-ca|verify-full)/.test(config.databaseUrl);
+
 function tlsDeLaBase(): PoolConfig['ssl'] {
-  const loPideLaUrl = /[?&]sslmode=(require|verify-ca|verify-full)/.test(config.databaseUrl);
   if (!config.databaseSsl && !loPideLaUrl) return undefined;
 
   if (config.databaseCaFile !== '') {
@@ -35,8 +36,21 @@ function tlsDeLaBase(): PoolConfig['ssl'] {
   return { rejectUnauthorized: false };
 }
 
+/**
+ * pg vuelve a parsear `sslmode` de la cadena de conexion y esa lectura pisa el
+ * `ssl` que le pasamos explicitamente (Object.assign en pg-connection-string
+ * aplica el resultado del parseo DESPUES de nuestra config). Como el TLS ya lo
+ * decidimos nosotros arriba, sacamos sslmode de la URL para que no interfiera.
+ */
+function connectionStringSinSslmode(): string {
+  if (!loPideLaUrl) return config.databaseUrl;
+  const url = new URL(config.databaseUrl);
+  url.searchParams.delete('sslmode');
+  return url.toString();
+}
+
 export const pool = new Pool({
-  connectionString: config.databaseUrl,
+  connectionString: connectionStringSinSslmode(),
   ssl: tlsDeLaBase(),
 });
 

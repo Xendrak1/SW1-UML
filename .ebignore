@@ -1,0 +1,19 @@
+# Elastic Beanstalk (plataforma Docker) prioriza docker-compose.yml sobre el
+# Dockerfile de la raiz si ambos estan presentes en el paquete desplegado. Ese
+# docker-compose.yml es solo para levantar Postgres en desarrollo local (puerto
+# 5433, contrasena de prueba): si se sube, EB corre eso en vez de la app.
+docker-compose.yml
+docker-compose.override.yml
+
+# Con .ebignore presente, el EB CLI arma el paquete a mano y deja de usar
+# git archive (que ya respeta .gitignore). Sin esto, empaqueta node_modules
+# completo (varios GB) y el deploy se cuelga subiendo el zip.
+node_modules/
+**/node_modules/
+.git/
+server/dist/
+server/uploads/
+uml-board/dist/
+Claude outputs/
+scratchpad/
+CONTEXTO-PARA-TERMINAL.md
