@@ -80,7 +80,9 @@ const clave = (s: string) =>
  */
 export function convertAccionesToUml(
   acciones: AccionIa[],
-  actuales: NodeType[]
+  actuales: NodeType[],
+  /** Relaciones que ya estan dibujadas, para no volver a trazarlas encima. */
+  edgesActuales: EdgeType[] = []
 ): { nodes: NodeType[]; edges: EdgeType[]; atributosNuevos: Array<{ nodeId: string; attribute: AttributeType }> } {
   const porEtiqueta = new Map<string, string>();
   actuales.forEach(n => porEtiqueta.set(clave(n.label), n.id));
@@ -92,6 +94,38 @@ export function convertAccionesToUml(
 
   const resolver = (label: unknown): string | undefined =>
     typeof label === 'string' ? porEtiqueta.get(clave(label)) : undefined;
+
+  /**
+   * Dos clases unidas son dos clases unidas, sin importar en que orden lo diga
+   * el modelo ni con que tipo. Sin esta clave sin orden, una foto que muestra la
+   * misma linea desde los dos lados (o que el modelo repite al describir la
+   * intermedia) dibujaba tres lineas paralelas entre las mismas dos cajas.
+   */
+  const par = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+  const yaUnidas = new Set<string>(edgesActuales.map(e => par(e.source, e.target)));
+
+  /** Registra la relacion si no existe todavia. Devuelve si la agrego. */
+  const agregarRelacion = (
+    source: string,
+    target: string,
+    tipo: EdgeType['tipo'],
+    origen: '1' | '*',
+    destino: '1' | '*'
+  ): boolean => {
+    if (source === target) return false;
+    const k = par(source, target);
+    if (yaUnidas.has(k)) return false;
+    yaUnidas.add(k);
+    edges.push({
+      id: `e_${uuidv4()}`,
+      source,
+      target,
+      tipo,
+      multiplicidadOrigen: origen,
+      multiplicidadDestino: destino,
+    });
+    return true;
+  };
 
   const atributosDe = (raw: unknown): AttributeType[] =>
     (Array.isArray(raw) ? (raw as AtributoCrudo[]) : [])
@@ -152,15 +186,14 @@ export function convertAccionesToUml(
     if (a.type === 'create' && a.target === 'edge') {
       const source = resolver(a.data?.sourceLabel);
       const target = resolver(a.data?.targetLabel);
-      if (!source || !target || source === target) return;
-      edges.push({
-        id: `e_${uuidv4()}`,
+      if (!source || !target) return;
+      agregarRelacion(
         source,
         target,
-        tipo: normalizeTipo(a.data?.tipo as string | undefined),
-        multiplicidadOrigen: normalizeMultiplicity(a.data?.multiplicidadOrigen as string | undefined),
-        multiplicidadDestino: normalizeMultiplicity(a.data?.multiplicidadDestino as string | undefined),
-      });
+        normalizeTipo(a.data?.tipo as string | undefined),
+        normalizeMultiplicity(a.data?.multiplicidadOrigen as string | undefined),
+        normalizeMultiplicity(a.data?.multiplicidadDestino as string | undefined)
+      );
     }
   });
 
@@ -170,18 +203,7 @@ export function convertAccionesToUml(
     .filter(n => n.asociativa && n.relaciona)
     .forEach(n => {
       (n.relaciona as string[]).forEach(otroId => {
-        const existe = edges.some(
-          e => (e.source === otroId && e.target === n.id) || (e.source === n.id && e.target === otroId)
-        );
-        if (existe) return;
-        edges.push({
-          id: `e_${uuidv4()}`,
-          source: otroId,
-          target: n.id,
-          tipo: 'asociacion',
-          multiplicidadOrigen: '1',
-          multiplicidadDestino: '*',
-        });
+        agregarRelacion(otroId, n.id, 'asociacion', '1', '*');
       });
     });
 

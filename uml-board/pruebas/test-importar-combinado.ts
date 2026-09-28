@@ -147,5 +147,47 @@ const desdeCero = convertAccionesToUml(
 );
 check('crea la clase', desdeCero.nodes.length === 1 && desdeCero.nodes[0].label === 'Venta');
 
+console.log('\n=== 7) No dibuja lineas repetidas entre las mismas dos clases ===');
+// Lo que hacia el modelo mirando la foto de la pizarra: repetir la relacion
+// Venta-Producto (la ve desde los dos lados y ademas al describir la intermedia).
+const repetidas = convertAccionesToUml(
+  [
+    { type: 'create', target: 'edge', data: { sourceLabel: 'Venta', targetLabel: 'Producto', tipo: 'asociacion', multiplicidadOrigen: '1', multiplicidadDestino: '*' } },
+    { type: 'create', target: 'edge', data: { sourceLabel: 'Producto', targetLabel: 'Venta', tipo: 'asociacion', multiplicidadOrigen: '*', multiplicidadDestino: '1' } },
+    { type: 'create', target: 'edge', data: { sourceLabel: 'Venta', targetLabel: 'Producto', tipo: 'agregacion', multiplicidadOrigen: '1', multiplicidadDestino: '*' } },
+  ],
+  actuales
+);
+check('de tres relaciones iguales queda una', repetidas.edges.length === 1, repetidas.edges.length);
+
+console.log('\n=== 8) Ni encima de una que ya estaba dibujada ===');
+const yaDibujada = convertAccionesToUml(
+  [
+    { type: 'create', target: 'edge', data: { sourceLabel: 'Venta', targetLabel: 'Cliente', tipo: 'asociacion', multiplicidadOrigen: '1', multiplicidadDestino: '*' } },
+  ],
+  actuales,
+  [
+    {
+      id: 'e-vieja',
+      source: 'n-cliente',
+      target: 'n-venta',
+      tipo: 'asociacion',
+      multiplicidadOrigen: '1',
+      multiplicidadDestino: '*',
+    },
+  ] as never
+);
+check('no la vuelve a trazar, ni al reves', yaDibujada.edges.length === 0, yaDibujada.edges);
+
+console.log('\n=== 9) La intermedia no duplica lo que ya se trazo ===');
+const conIntermedia = convertAccionesToUml(
+  [
+    { type: 'create', target: 'class', data: { label: 'Detalle', attributes: [], asociativa: true, relaciona: ['Venta', 'Producto'] } },
+    { type: 'create', target: 'edge', data: { sourceLabel: 'Detalle', targetLabel: 'Venta', tipo: 'asociacion', multiplicidadOrigen: '1', multiplicidadDestino: '*' } },
+  ],
+  actuales
+);
+check('quedan sus dos aristas, no tres', conIntermedia.edges.length === 2, conIntermedia.edges.length);
+
 console.log(`\n=== RESULTADO: ${ok} OK, ${fail} fallas de ${ok + fail} ===`);
 process.exit(fail === 0 ? 0 : 1);

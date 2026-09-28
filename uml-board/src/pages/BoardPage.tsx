@@ -709,7 +709,10 @@ const BoardPage = () => {
       const result = await importDiagramFromImage(
         file,
         stage => setImportProgress(stage),
-        nodes
+        nodes,
+        // En el lienzo las relaciones son de React Flow; el comparador trabaja
+        // con el modelo UML, asi que se traducen antes de pasarlas.
+        flowEdgesToUml(edges)
       );
 
       if (result.success && result.nodes && result.edges) {

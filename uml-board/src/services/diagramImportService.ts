@@ -155,7 +155,9 @@ export async function importDiagramFromImage(
    * pizarron suma lo que se agrego (un Vendedor, una intermedia Detalle) en vez
    * de duplicar las clases que ya estaban.
    */
-  actuales?: NodeType[]
+  actuales?: NodeType[],
+  /** Relaciones ya dibujadas, para no trazar una linea encima de otra. */
+  edgesActuales?: EdgeType[]
 ): Promise<AnalysisResult> {
   try {
     if (!file.type.startsWith('image/')) {
@@ -187,7 +189,8 @@ export async function importDiagramFromImage(
       const acciones = (result as { actions?: unknown }).actions;
       const { nodes, edges, atributosNuevos } = convertAccionesToUml(
         Array.isArray(acciones) ? (acciones as never[]) : [],
-        actuales as NodeType[]
+        actuales as NodeType[],
+        edgesActuales ?? []
       );
       if (nodes.length === 0 && edges.length === 0 && atributosNuevos.length === 0) {
         throw new Error(
