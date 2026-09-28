@@ -110,6 +110,13 @@ export class ModeloNoInstaladoError extends Error {
  * darle el mismo error.
  */
 const CODIGOS_REINTENTABLES = [429, 500, 502, 503, 504, 529];
+
+/**
+ * Techo de tokens para el reintento cuando el modelo se quedo sin presupuesto
+ * razonando. Generoso porque la alternativa es que la funcion no ande con esos
+ * modelos, pero acotado para que un modelo que se va en loop no salga carisimo.
+ */
+const MAX_TOKENS_RAZONAMIENTO = 16000;
 const ESPERAS_MS = [1000, 2000, 4000];
 
 const esReintentable = (msg: string): boolean =>
@@ -298,7 +305,43 @@ async function openaiChat(req: ChatRequest, motor?: Motor): Promise<ChatResult> 
     console.warn('[ai] el proveedor no acepta response_format, se reintenta sin el');
     data = await llamar(false);
   }
-  const mensaje = data?.choices?.[0]?.message;
+  let data2 = data;
+  const gastoRazonando = (d: any): boolean => {
+    const m = d?.choices?.[0]?.message;
+    const vacio = typeof m?.content !== 'string' || m.content.trim() === '';
+    if (!vacio) return false;
+    return (
+      (typeof m?.reasoning_content === 'string' && m.reasoning_content.trim() !== '') ||
+      d?.choices?.[0]?.finish_reason === 'length'
+    );
+  };
+  // Un modelo de razonamiento puede gastar TODO el presupuesto pensando y no
+  // llegar a escribir nada. No es un error del proveedor ni de la clave, asi que
+  // no hay excepcion que atrapar: hay que mirar la respuesta y repetir con mas
+  // aire. Una sola vez, para no multiplicar el gasto en silencio.
+  if (gastoRazonando(data2) && (req.numPredict ?? 4096) < MAX_TOKENS_RAZONAMIENTO) {
+    console.warn(
+      `[ai] "${model}" gasto su presupuesto razonando; se reintenta con ${MAX_TOKENS_RAZONAMIENTO} tokens`
+    );
+    const holgado = { ...req, numPredict: MAX_TOKENS_RAZONAMIENTO };
+    data2 = await conReintentos(() =>
+      fetchJson(baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+          'User-Agent': USER_AGENT,
+          ...(motor?.sesion ? { 'x-opencode-session': motor.sesion } : {}),
+        },
+        body: JSON.stringify({
+          ...JSON.parse(cuerpo(false)),
+          max_tokens: holgado.numPredict,
+        }),
+      })
+    );
+  }
+
+  const mensaje = data2?.choices?.[0]?.message;
   const text = mensaje?.content;
   if (typeof text !== 'string' || text.trim() === '') {
     // Los modelos de razonamiento gastan tokens pensando ANTES de escribir la
@@ -311,8 +354,8 @@ async function openaiChat(req: ChatRequest, motor?: Motor): Promise<ChatResult> 
     const corte = data?.choices?.[0]?.finish_reason;
     if (razono || corte === 'length') {
       throw new Error(
-        `El modelo "${model}" contesto vacio porque gasto su presupuesto de tokens razonando. ` +
-          'Subi el limite de tokens, o usa un modelo sin razonamiento para esta tarea.'
+        `El modelo "${model}" contesto vacio: gasto razonando incluso los ${MAX_TOKENS_RAZONAMIENTO} ` +
+          'tokens del reintento. Probá con un modelo sin razonamiento para esta tarea.'
       );
     }
     throw new Error(`El proveedor devolvio una respuesta vacia (modelo "${model}")`);
