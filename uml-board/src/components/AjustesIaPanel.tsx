@@ -6,7 +6,9 @@ import {
   leerAjustesIa,
   type AjustesIa,
 } from '../lib/ajustesIa';
+import { cabecerasDeIa } from '../lib/ajustesIa';
 import { modelosLocales, ollamaDisponible } from '../lib/iaRelevo';
+import { api } from '../lib/apiClient';
 
 /**
  * Donde el usuario elige de donde sale la IA.
@@ -31,6 +33,8 @@ const AjustesIaPanel: React.FC<Props> = ({ onCerrar }) => {
   const [sondeando, setSondeando] = useState(false);
   const [local, setLocal] = useState<{ vivo: boolean; modelos: string[] } | null>(null);
   const [guardado, setGuardado] = useState(false);
+  const [probandoNube, setProbandoNube] = useState(false);
+  const [nube, setNube] = useState<{ ok: boolean; detalle: string } | null>(null);
 
   const cambiar = <K extends keyof AjustesIa>(k: K, v: AjustesIa[K]) => {
     setA(prev => ({ ...prev, [k]: v }));
@@ -53,6 +57,30 @@ const AjustesIaPanel: React.FC<Props> = ({ onCerrar }) => {
     void probarLocal();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /**
+   * Prueba la clave contra el proveedor de verdad.
+   *
+   * Sin esto, la unica forma de enterarse de que la clave, el endpoint o el
+   * nombre del modelo estaban mal era mandar una instruccion y ver el error del
+   * proveedor en crudo dentro del asistente, que es el peor momento posible.
+   */
+  const probarNube = async () => {
+    setProbandoNube(true);
+    setNube(null);
+    try {
+      const r = await api.probarIa(cabecerasDeIa({ ...a, modo: 'nube' }));
+      setNube(
+        r.ok
+          ? { ok: true, detalle: `Responde ${r.model ?? ''} (${r.provider ?? ''})`.trim() }
+          : { ok: false, detalle: r.error ?? 'No se pudo usar la clave' }
+      );
+    } catch (err) {
+      setNube({ ok: false, detalle: err instanceof Error ? err.message : 'Fallo la prueba' });
+    } finally {
+      setProbandoNube(false);
+    }
+  };
 
   const guardar = () => {
     guardarAjustesIa(a);
@@ -242,9 +270,37 @@ const AjustesIaPanel: React.FC<Props> = ({ onCerrar }) => {
               />
             </label>
             <label className='ajustes__campo'>
-              <span>Modelo</span>
+              <span>Modelo de texto</span>
               <input value={a.modeloNube} onChange={e => cambiar('modeloNube', e.target.value)} />
             </label>
+            {/* Separado del de texto porque casi ningun proveedor usa el mismo
+                para las dos cosas: con un solo campo, o fallaba el asistente o
+                fallaba la importacion por foto. */}
+            <label className='ajustes__campo'>
+              <span>Modelo de visión</span>
+              <input
+                value={a.modeloNubeVision}
+                onChange={e => cambiar('modeloNubeVision', e.target.value)}
+              />
+              <small className='muted'>
+                El que lee las fotos de diagramas. Si tu proveedor no tiene uno con visión, la
+                importación por imagen no va a funcionar.
+              </small>
+            </label>
+            <div className='ajustes__estado'>
+              <button
+                type='button'
+                className='btn'
+                onClick={probarNube}
+                disabled={probandoNube || a.claveNube.trim() === ''}
+              >
+                {probandoNube ? 'Probando…' : 'Probar la clave'}
+              </button>
+              {nube && (
+                <span className={nube.ok ? 'ajustes__ok' : 'ajustes__mal'}>{nube.detalle}</span>
+              )}
+            </div>
+
             <label className='ajustes__opcion'>
               <input
                 type='checkbox'

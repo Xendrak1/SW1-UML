@@ -26,7 +26,24 @@ export interface Motor {
   baseUrl?: string;
   modelo?: string;
   modeloVision?: string;
+  /**
+   * Identificador estable de la conversacion. Algunos proveedores lo piden para
+   * rutear y cachear (OpenCode Go rechaza la peticion sin el). Lo genera el
+   * cliente y se mantiene mientras dure el trabajo sobre una misma pizarra.
+   */
+  sesion?: string;
 }
+
+/**
+ * Como se presenta esta aplicacion ante el proveedor.
+ *
+ * Va con el nombre real de la herramienta a proposito: las pasarelas que
+ * condicionan el acceso al tipo de cliente esperan poder identificar quien las
+ * llama, y hacerse pasar por otro cliente para esquivar ese control es
+ * exactamente lo que miran. Si un proveedor decide que esta app no entra, la
+ * respuesta correcta es cambiar de proveedor, no de disfraz.
+ */
+export const USER_AGENT = 'case-uml-colaborativa/1.0 (herramienta CASE de modelado UML)';
 
 /**
  * La URL del proveedor la elige el usuario, asi que hay que acotarla: sin esto,
@@ -84,6 +101,46 @@ export class ModeloNoInstaladoError extends Error {
     );
     this.name = 'ModeloNoInstaladoError';
   }
+}
+
+/**
+ * Codigos en los que reintentar tiene sentido: el proveedor esta saturado o tuvo
+ * un problema momentaneo, no hay nada mal en la peticion. Un 401 o un 404 se
+ * dejan pasar tal cual, porque reintentarlos solo hace esperar al usuario para
+ * darle el mismo error.
+ */
+const CODIGOS_REINTENTABLES = [429, 500, 502, 503, 504, 529];
+const ESPERAS_MS = [1000, 2000, 4000];
+
+const esReintentable = (msg: string): boolean =>
+  CODIGOS_REINTENTABLES.some(c => msg.includes(`HTTP ${c} `));
+
+const dormir = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+/**
+ * Reintenta con espera creciente lo que el proveedor reporto como transitorio.
+ *
+ * Sin esto, un "503 high demand" de un segundo rompia la importacion entera y el
+ * usuario veia el JSON crudo del proveedor. Tres intentos cubren de sobra un
+ * pico de demanda sin hacer esperar de mas cuando el error es de verdad.
+ */
+async function conReintentos<T>(fn: () => Promise<T>): Promise<T> {
+  let ultimo: unknown;
+  for (let i = 0; i <= ESPERAS_MS.length; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      ultimo = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (i === ESPERAS_MS.length || !esReintentable(msg)) throw err;
+      console.warn(
+        `[ai] el proveedor contesto algo transitorio, reintento ${i + 1}/${ESPERAS_MS.length} ` +
+          `en ${ESPERAS_MS[i]}ms: ${msg.slice(0, 120)}`
+      );
+      await dormir(ESPERAS_MS[i]);
+    }
+  }
+  throw ultimo;
 }
 
 async function fetchJson(url: string, init: RequestInit): Promise<any> {
@@ -202,23 +259,45 @@ async function openaiChat(req: ChatRequest, motor?: Motor): Promise<ChatResult> 
       ]
     : req.user;
 
-  const data = await fetchJson(baseUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
+  const cuerpo = (conFormatoJson: boolean) =>
+    JSON.stringify({
       model,
       temperature: req.temperature ?? 0.1,
       max_tokens: req.numPredict ?? 4096,
-      response_format: { type: 'json_object' },
+      ...(conFormatoJson ? { response_format: { type: 'json_object' } } : {}),
       messages: [
         { role: 'system', content: req.system },
         { role: 'user', content: userContent },
       ],
-    }),
-  });
+    });
+
+  const llamar = (conFormatoJson: boolean) =>
+    conReintentos(() =>
+      fetchJson(baseUrl, {
+        method: 'POST',
+          headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+          'User-Agent': USER_AGENT,
+          ...(motor?.sesion ? { 'x-opencode-session': motor.sesion } : {}),
+        },
+        body: cuerpo(conFormatoJson),
+      })
+    );
+
+  let data: any;
+  try {
+    data = await llamar(true);
+  } catch (err) {
+    // response_format es de OpenAI y no todas las pasarelas compatibles lo
+    // aceptan. Si es eso lo que molesta, se reintenta sin el: el prompt ya pide
+    // JSON y el validador lo comprueba igual, asi que perderlo cuesta poco y
+    // dejar afuera a un proveedor entero cuesta mucho mas.
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!/response_format|unknown field|unsupported|invalid.*parameter/i.test(msg)) throw err;
+    console.warn('[ai] el proveedor no acepta response_format, se reintenta sin el');
+    data = await llamar(false);
+  }
   const text = data?.choices?.[0]?.message?.content;
   if (typeof text !== 'string' || text.trim() === '') {
     throw new Error('OpenAI devolvio una respuesta vacia');

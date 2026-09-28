@@ -703,27 +703,34 @@ const BoardPage = () => {
     console.log(`📤 Iniciando importación de: ${file.name}`);
 
     try {
-      const result = await importDiagramFromImage(file, stage => setImportProgress(stage));
+      // Con el lienzo ya poblado, la foto se compara en vez de transcribirse: es
+      // el caso de clase, donde el diagrama de la pizarra se va extendiendo y
+      // cada foto nueva antes duplicaba las clases que ya estaban.
+      const result = await importDiagramFromImage(
+        file,
+        stage => setImportProgress(stage),
+        nodes
+      );
 
       if (result.success && result.nodes && result.edges) {
-        // Los nodos e edges ya vienen con IDs únicos del servicio
-        // Solo necesitamos agregar prefijo para evitar conflictos con nodos existentes
+        // En modo combinar los ids ya estan resueltos contra el lienzo (una
+        // relacion nueva apunta a la clase que ya existia), asi que renombrarlos
+        // romperia justamente eso.
         const importTimestamp = Date.now();
+        const prefijo = (id: string) => (result.combinado ? id : `imported_${importTimestamp}_${id}`);
 
         const importedNodes = result.nodes.map(node => ({
           ...node,
-          id: `imported_${importTimestamp}_${node.id}`,
+          id: prefijo(node.id),
           // Actualizar relaciona para entidades asociativas
-          relaciona: node.relaciona
-            ? node.relaciona.map(relId => `imported_${importTimestamp}_${relId}`)
-            : undefined,
+          relaciona: node.relaciona ? node.relaciona.map(prefijo) : undefined,
         }));
 
         const importedEdges = result.edges.map(edge => ({
           ...edge,
-          id: `imported_${importTimestamp}_${edge.id}`,
-          source: `imported_${importTimestamp}_${edge.source}`,
-          target: `imported_${importTimestamp}_${edge.target}`,
+          id: prefijo(edge.id),
+          source: prefijo(edge.source),
+          target: prefijo(edge.target),
         }));
 
         // ✅ Convertir nodos importados a formato Supabase
@@ -770,13 +777,40 @@ const BoardPage = () => {
         onNodesChange(nodeChanges as any);
         onEdgesChange(edgeChanges as any);
 
+        // Atributos que la foto agrega a clases que ya estaban: no son nodos
+        // nuevos, son una actualizacion de los que hay.
+        const atributos = result.atributosNuevos ?? [];
+        if (atributos.length > 0) {
+          const porNodo = new Map<string, typeof atributos>();
+          atributos.forEach(a => porNodo.set(a.nodeId, [...(porNodo.get(a.nodeId) ?? []), a]));
+          const cambios = [...porNodo.entries()].flatMap(([nodeId, lista]) => {
+            const actual = nodes.find(n => n.id === nodeId);
+            if (!actual) return [];
+            return [
+              {
+                id: nodeId,
+                type: 'replace',
+                item: convertUMLToSupabaseNode({
+                  ...actual,
+                  attributes: [...(actual.attributes ?? []), ...lista.map(a => a.attribute)],
+                }),
+              },
+            ];
+          });
+          if (cambios.length > 0) onNodesChange(cambios as any);
+        }
+
         await saveDiagram();
 
         console.log(
           `✅ Importación exitosa: ${importedNodes.length} clases, ${importedEdges.length} relaciones`
         );
         alert(
-          `✅ Diagrama importado exitosamente!\n${importedNodes.length} clases y ${importedEdges.length} relaciones agregadas`
+          result.combinado
+            ? `✅ Diagrama actualizado desde la foto\n${importedNodes.length} clases nuevas, ` +
+              `${importedEdges.length} relaciones y ${(result.atributosNuevos ?? []).length} atributos agregados\n` +
+              'Lo que ya estaba se respetó.'
+            : `✅ Diagrama importado exitosamente!\n${importedNodes.length} clases y ${importedEdges.length} relaciones agregadas`
         );
 
         // Ajustar vista para mostrar todo el contenido

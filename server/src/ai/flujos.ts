@@ -15,8 +15,10 @@
  * proveedor; el navegador lo conduce de a un paso por HTTP.
  */
 import {
+  IMAGE_MERGE_SYSTEM,
   IMAGE_TO_UML_SYSTEM,
   IMAGE_TO_UML_USER,
+  imageMergeUser,
   REPAIR_SYSTEM,
   UML_ACTIONS_SYSTEM,
   umlActionsUser,
@@ -273,7 +275,27 @@ export function flujoDeInstruccion(prompt: string, classes: unknown, relations: 
 
 // -------------------------------------------------------------------- imagen
 
-export async function* flujoImagen(imageBase64: string): Flujo {
+/**
+ * Leer una foto.
+ *
+ * Con `actual` no transcribe sino que compara: devuelve acciones sobre lo que ya
+ * hay, para que una segunda foto del mismo pizarron sume en vez de pisar el
+ * trabajo hecho entre una y otra. Sin `actual` mantiene el comportamiento de
+ * antes, que es el correcto cuando el diagrama esta vacio.
+ */
+export async function* flujoImagen(
+  imageBase64: string,
+  actual?: { classes: unknown; relations: unknown }
+): Flujo {
+  if (actual) {
+    const a = yield* pedirJson({
+      system: IMAGE_MERGE_SYSTEM,
+      user: imageMergeUser(actual.classes, actual.relations),
+      imageBase64,
+      rescate: 'actions',
+    });
+    return { ...a, etapas: [] };
+  }
   const a = yield* pedirJson({
     system: IMAGE_TO_UML_SYSTEM,
     user: IMAGE_TO_UML_USER,

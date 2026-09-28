@@ -188,6 +188,21 @@ export const api = {
     }>('/api/case/eapx', { method: 'POST', body: fd });
   },
 
+  /**
+   * Prueba la configuracion de IA del usuario con la llamada mas barata posible.
+   *
+   * Sin esto, la unica forma de saber si la clave, el endpoint o el nombre del
+   * modelo estaban bien era mandar una instruccion de verdad y ver el error
+   * crudo del proveedor dentro del asistente, que es el peor momento para
+   * enterarse.
+   */
+  probarIa: (cabeceras: Record<string, string>) =>
+    request<{ ok: boolean; provider?: string; model?: string; error?: string }>('/api/ai/probar', {
+      method: 'POST',
+      headers: cabeceras,
+      body: JSON.stringify({}),
+    }),
+
   /** Pregunta libre con contexto acotado; devuelve texto. La usa la guia de usuario. */
   ask: async (question: string, context: string) => {
     type Respuesta = { answer: string; provider: string; model: string };
@@ -203,7 +218,14 @@ export const api = {
     });
   },
 
-  imageToUml: async (file: File | Blob) => {
+  imageToUml: async (
+    file: File | Blob,
+    /**
+     * El diagrama actual. Si va, el servidor compara la foto con esto y
+     * devuelve acciones (que suman) en vez de una transcripcion (que duplica).
+     */
+    actuales?: Array<{ label: string; attributes?: Array<{ name: string; datatype: string; scope: string }> }>
+  ) => {
     const camino = await resolverCamino();
     if (camino === 'sin-ia') throw new Error(SIN_IA);
     if (camino === 'local') {
@@ -227,7 +249,17 @@ export const api = {
     }
     const form = new FormData();
     form.append('image', file);
+    if (actuales && actuales.length > 0) {
+      form.append(
+        'diagrama',
+        JSON.stringify({
+          classes: actuales.map(n => ({ label: n.label, attributes: n.attributes ?? [] })),
+          relations: [],
+        })
+      );
+    }
     return request<{
+      actions?: Array<{ type: string; target: string; data: Record<string, unknown> }>;
       classes: Array<{
         label: string;
         attributes?: Array<{ name: string; datatype: string; scope: string }>;

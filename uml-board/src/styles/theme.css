@@ -769,6 +769,14 @@ pre {
   margin-top: 18px;
 }
 
+/* El motivo de un rechazo es una frase, no una etiqueta: se deja crecer. */
+.chip--motivo {
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ------------------------------------------------------------ ajustes de IA */
 
 .ajustes__intro {

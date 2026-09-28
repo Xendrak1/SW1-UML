@@ -75,6 +75,7 @@ echo "== Con codigo de registro, para probar las invitaciones =="
 levantar "SECRETO-DE-PRUEBA"
 correr test-invitaciones.mjs
 correr test-relevo.mjs
+correr test-probar-ia.mjs
 
 
 pkill -f "tsx.*src/index" 2>/dev/null

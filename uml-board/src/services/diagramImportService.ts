@@ -1,6 +1,31 @@
 import { v4 as uuidv4 } from 'uuid';
 import { api } from '../lib/apiClient';
 import type { AttributeType, EdgeType, NodeType } from '../utils/umlConstants';
+import {
+  convertAccionesToUml,
+  gridPosition,
+  normalizeDatatype,
+  normalizeMultiplicity,
+  normalizeScope,
+  normalizeTipo,
+} from './importarCombinado';
+
+export { convertAccionesToUml };
+
+interface AiClass {
+  label: string;
+  attributes?: Array<{ name: string; datatype?: string; scope?: string }>;
+  asociativa?: boolean;
+  relaciona?: [string, string];
+}
+
+interface AiRelation {
+  sourceLabel: string;
+  targetLabel: string;
+  tipo?: string;
+  multiplicidadOrigen?: string;
+  multiplicidadDestino?: string;
+}
 
 /**
  * Importacion de un diagrama de clases a partir de una foto o captura.
@@ -17,81 +42,13 @@ export interface AnalysisResult {
   success: boolean;
   nodes?: NodeType[];
   edges?: EdgeType[];
+  /** Atributos que la foto agrega a clases que YA estaban en el lienzo. */
+  atributosNuevos?: Array<{ nodeId: string; attribute: AttributeType }>;
+  /** true cuando la foto se comparo con el diagrama actual en vez de transcribirse entera. */
+  combinado?: boolean;
   error?: string;
   provider?: string;
   model?: string;
-}
-
-const VALID_DATATYPES = ['String', 'Integer', 'Float', 'Boolean', 'Date'] as const;
-type ScopeLiteral = 'public' | 'private' | 'protected';
-const VALID_TIPOS = ['asociacion', 'agregacion', 'composicion', 'herencia', 'dependencia'] as const;
-
-type Datatype = (typeof VALID_DATATYPES)[number];
-type Scope = ScopeLiteral;
-type Tipo = (typeof VALID_TIPOS)[number];
-
-const normalizeDatatype = (raw: string | undefined): Datatype => {
-  const value = (raw ?? '').trim().toLowerCase();
-  if (['int', 'integer', 'long', 'entero', 'number'].includes(value)) return 'Integer';
-  if (['float', 'double', 'decimal', 'real', 'numeric'].includes(value)) return 'Float';
-  if (['bool', 'boolean', 'booleano'].includes(value)) return 'Boolean';
-  if (['date', 'datetime', 'timestamp', 'fecha'].includes(value)) return 'Date';
-  const matched = VALID_DATATYPES.find(t => t.toLowerCase() === value);
-  return matched ?? 'String';
-};
-
-const normalizeScope = (raw: string | undefined): Scope => {
-  const value = (raw ?? '').trim().toLowerCase();
-  if (value === '+' || value === 'public' || value === 'publico') return 'public';
-  if (value === '#' || value === 'protected' || value === 'protegido') return 'protected';
-  return 'private';
-};
-
-const normalizeTipo = (raw: string | undefined): Tipo => {
-  const value = (raw ?? '').trim().toLowerCase();
-  const matched = VALID_TIPOS.find(t => t === value);
-  if (matched) return matched;
-  if (value.includes('heren') || value.includes('inherit') || value.includes('extend'))
-    return 'herencia';
-  if (value.includes('compos')) return 'composicion';
-  if (value.includes('agreg') || value.includes('aggreg')) return 'agregacion';
-  if (value.includes('depend')) return 'dependencia';
-  return 'asociacion';
-};
-
-/** Cualquier cardinalidad "muchos" (n, m, 0..*, 1..*) se reduce a '*'. */
-const normalizeMultiplicity = (raw: string | undefined): '1' | '*' => {
-  const value = (raw ?? '1').trim().toLowerCase();
-  if (value === '*' || value.includes('..') || value === 'n' || value === 'm' || value.includes('muchos'))
-    return '*';
-  return '1';
-};
-
-/** Acomodo en cuadricula: las clases importadas quedan legibles sin tener que moverlas. */
-const GRID_COLUMNS = 4;
-const GRID_X = 320;
-const GRID_Y = 260;
-
-function gridPosition(index: number): { x: number; y: number } {
-  return {
-    x: 80 + (index % GRID_COLUMNS) * GRID_X,
-    y: 80 + Math.floor(index / GRID_COLUMNS) * GRID_Y,
-  };
-}
-
-interface AiClass {
-  label: string;
-  attributes?: Array<{ name: string; datatype?: string; scope?: string }>;
-  asociativa?: boolean;
-  relaciona?: [string, string];
-}
-
-interface AiRelation {
-  sourceLabel: string;
-  targetLabel: string;
-  tipo?: string;
-  multiplicidadOrigen?: string;
-  multiplicidadDestino?: string;
 }
 
 /**
@@ -191,7 +148,14 @@ export function convertAiResultToUml(
 /** Importa un diagrama desde una imagen (foto de pizarra, captura, boceto). */
 export async function importDiagramFromImage(
   file: File,
-  onProgress?: (stage: string) => void
+  onProgress?: (stage: string) => void,
+  /**
+   * Lo que ya hay en el lienzo. Si se pasa y no esta vacio, la foto se COMPARA
+   * con esto en vez de transcribirse entera: asi la segunda foto del mismo
+   * pizarron suma lo que se agrego (un Vendedor, una intermedia Detalle) en vez
+   * de duplicar las clases que ya estaban.
+   */
+  actuales?: NodeType[]
 ): Promise<AnalysisResult> {
   try {
     if (!file.type.startsWith('image/')) {
@@ -210,10 +174,42 @@ export async function importDiagramFromImage(
       console.warn('[import] no se pudo archivar la imagen, se continua', err);
     }
 
-    onProgress?.('Interpretando el diagrama con IA...');
-    const result = await api.imageToUml(file);
+    const combinar = Array.isArray(actuales) && actuales.length > 0;
+
+    onProgress?.(
+      combinar ? 'Comparando la foto con el diagrama actual...' : 'Interpretando el diagrama con IA...'
+    );
+    const result = await api.imageToUml(file, combinar ? actuales : undefined);
 
     onProgress?.('Convirtiendo al modelo del editor...');
+
+    if (combinar) {
+      const acciones = (result as { actions?: unknown }).actions;
+      const { nodes, edges, atributosNuevos } = convertAccionesToUml(
+        Array.isArray(acciones) ? (acciones as never[]) : [],
+        actuales as NodeType[]
+      );
+      if (nodes.length === 0 && edges.length === 0 && atributosNuevos.length === 0) {
+        throw new Error(
+          'La foto no agrega nada que no esté ya en el diagrama. Si esperabas cambios, ' +
+            'probá con una foto más nítida y de frente.'
+        );
+      }
+      console.log(
+        `[import] combinado: ${nodes.length} clases nuevas, ${edges.length} relaciones y ` +
+          `${atributosNuevos.length} atributos via ${result.provider} (${result.model})`
+      );
+      return {
+        success: true,
+        nodes,
+        edges,
+        atributosNuevos,
+        combinado: true,
+        provider: result.provider,
+        model: result.model,
+      };
+    }
+
     const { nodes, edges } = convertAiResultToUml(result.classes ?? [], result.relations ?? []);
 
     if (nodes.length === 0) {

@@ -87,7 +87,7 @@ export function iniciarDictado(handlers: DictadoHandlers, continuo = false): () 
           capListenerRemover = null;
         }
         handlers.onFin();
-      } catch (e) {
+      } catch {
         // ignorar
       }
     };

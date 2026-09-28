@@ -40,6 +40,7 @@ function motorDeCabeceras(req: Request): Motor | undefined {
     baseUrl: texto('x-ia-base-url'),
     modelo: texto('x-ia-modelo'),
     modeloVision: texto('x-ia-modelo-vision'),
+    sesion: texto('x-ia-sesion'),
   };
 }
 
@@ -219,6 +220,25 @@ aiRouter.post('/ask', async (req, res, next) => {
   }
 });
 
+/**
+ * El diagrama actual cuando viene junto a la imagen (multipart, asi que llega
+ * como texto). Si no viene, o viene roto, se importa como antes: transcripcion
+ * completa. Nunca se falla por esto.
+ */
+function actualDeFormulario(req: Request): { classes: unknown; relations: unknown } | undefined {
+  const crudo = (req.body as Record<string, unknown> | undefined)?.diagrama;
+  if (typeof crudo !== 'string' || crudo.trim() === '') return undefined;
+  try {
+    const d = JSON.parse(crudo) as { classes?: unknown; relations?: unknown };
+    if (!Array.isArray(d?.classes)) return undefined;
+    // Con el diagrama vacio no hay nada que comparar: conviene el camino viejo.
+    if (d.classes.length === 0) return undefined;
+    return { classes: d.classes, relations: Array.isArray(d.relations) ? d.relations : [] };
+  } catch {
+    return undefined;
+  }
+}
+
 /** Foto de un diagrama -> clases y relaciones. */
 aiRouter.post('/image-to-uml', upload.single('image'), async (req, res, next) => {
   try {
@@ -226,13 +246,52 @@ aiRouter.post('/image-to-uml', upload.single('image'), async (req, res, next) =>
       res.status(400).json({ error: 'Falta el archivo "image"' });
       return;
     }
+    const actual = actualDeFormulario(req);
     const { resultado, provider, model } = await conducir(
-      flujoImagen(req.file.buffer.toString('base64')),
+      flujoImagen(req.file.buffer.toString('base64'), actual),
       motorDeCabeceras(req)
     );
-    res.json(respuestaImagen(resultado, provider, model));
+    // Con diagrama previo la respuesta son acciones sobre lo que ya hay; sin el,
+    // la transcripcion completa de siempre.
+    res.json(
+      actual
+        ? respuestaAcciones(resultado, provider, model)
+        : respuestaImagen(resultado, provider, model)
+    );
   } catch (err) {
     if (!responderErrorDeIa(err, res)) next(err);
+  }
+});
+
+/**
+ * Prueba la clave del usuario con la llamada mas barata posible.
+ *
+ * Existe porque el unico modo que tenia el usuario de saber si su configuracion
+ * servia era mandar una instruccion de verdad y esperar a que fallara, con un
+ * error del proveedor en crudo. Aca la pregunta es "decime OK" y la respuesta
+ * llega en un segundo, diciendo que modelo contesto o exactamente que se quejo.
+ */
+aiRouter.post('/probar', async (req, res) => {
+  const motor = motorDeCabeceras(req);
+  if (!motor) {
+    res.status(400).json({ ok: false, error: 'No mandaste ninguna clave para probar' });
+    return;
+  }
+  try {
+    const r = await chat(
+      {
+        system: 'Respondes UNICAMENTE con el objeto JSON {"ok": true}.',
+        user: 'Devolve {"ok": true}.',
+        numPredict: 32,
+      },
+      motor
+    );
+    res.json({ ok: true, provider: r.provider, model: r.model, respuesta: r.text.slice(0, 200) });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // El cuerpo del error del proveedor es lo mas util que hay aca: dice si la
+    // clave es invalida, si el modelo no existe o si se acabo el credito.
+    res.status(200).json({ ok: false, error: msg.slice(0, 500) });
   }
 });
 
@@ -349,7 +408,13 @@ aiRouter.post('/relevo/iniciar-imagen', upload.single('image'), async (req, res,
       res.status(400).json({ error: 'Falta el archivo "image"' });
       return;
     }
-    await iniciarSesion('imagen', flujoImagen(req.file.buffer.toString('base64')), req, res);
+    const actual = actualDeFormulario(req);
+    await iniciarSesion(
+      actual ? 'acciones' : 'imagen',
+      flujoImagen(req.file.buffer.toString('base64'), actual),
+      req,
+      res
+    );
   } catch (err) {
     if (!responderErrorDeIa(err, res)) next(err);
   }

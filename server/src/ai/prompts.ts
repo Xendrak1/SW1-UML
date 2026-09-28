@@ -170,3 +170,101 @@ Respondes UNICAMENTE con este objeto JSON, sin texto antes ni despues, sin markd
 export const IMAGE_TO_UML_USER =
   'Transcribe el diagrama de clases de esta imagen al objeto JSON indicado. ' +
   'Recorre la imagen clase por clase y despues linea por linea, para no omitir relaciones.';
+
+/**
+ * Importar una foto SUMANDO en vez de pisar.
+ *
+ * El caso real: en clase se dibuja un diagrama simple en la pizarra y despues se
+ * lo extiende (aparece Vendedor, aparece la intermedia Detalle). Si cada foto
+ * reemplaza el documento, el trabajo hecho en la herramienta entre una foto y la
+ * otra se pierde, y encima se duplican las clases que ya estaban.
+ *
+ * Por eso este prompt no pide una transcripcion sino la DIFERENCIA: mira la foto,
+ * la compara con lo que ya hay, y devuelve las mismas acciones que entiende el
+ * asistente de texto. Asi hay un solo validador y un solo camino de aplicacion.
+ */
+export const IMAGE_MERGE_SYSTEM = `Eres un experto en leer diagramas de clases UML dibujados a mano (pizarra, papel, captura) y en comparar lo que ves con un diagrama que ya existe.
+
+Recibes una imagen y el estado actual del diagrama. Devuelves UNICAMENTE las acciones necesarias para que el diagrama actual refleje tambien lo que muestra la imagen. No re-creas lo que ya esta.
+
+## FORMATO DE SALIDA (obligatorio)
+
+Respondes UNICAMENTE con este objeto JSON, sin texto antes ni despues, sin markdown:
+
+{"actions": [ ...acciones... ]}
+
+Si la imagen no agrega nada que no este ya en el diagrama, respondes {"actions": []}.
+
+## ACCIONES DISPONIBLES
+
+1. Crear clase:
+{"type":"create","target":"class","data":{"label":"Nombre","attributes":[{"name":"campo","datatype":"String","scope":"private"}]}}
+
+2. Crear clase asociativa (la tabla intermedia de un muchos a muchos):
+{"type":"create","target":"class","data":{"label":"Nombre","attributes":[{"name":"cantidad","datatype":"Integer","scope":"private"}],"asociativa":true,"relaciona":["ClaseA","ClaseB"]}}
+
+3. Agregar un atributo a una clase que ya existe:
+{"type":"create","target":"attribute","data":{"classId":"NombreDeLaClase","name":"campo","datatype":"String","scope":"private"}}
+
+4. Crear una relacion:
+{"type":"create","target":"edge","data":{"sourceLabel":"ClaseOrigen","targetLabel":"ClaseDestino","tipo":"asociacion","multiplicidadOrigen":"1","multiplicidadDestino":"*"}}
+
+5. Renombrar una clase existente:
+{"type":"update","target":"class","data":{"id":"NombreActual","label":"NombreNuevo"}}
+
+## VALORES PERMITIDOS (no inventes otros)
+
+- datatype: "String" | "Integer" | "Float" | "Boolean" | "Date"
+- scope: "public" | "private" | "protected"
+- tipo: "asociacion" | "agregacion" | "composicion" | "herencia" | "dependencia"
+- multiplicidadOrigen y multiplicidadDestino: "1" | "*"
+
+## COMO LEER LA IMAGEN
+
+- Simbolos: linea simple -> asociacion; rombo hueco -> agregacion; rombo lleno -> composicion; triangulo hueco -> herencia (apunta a la clase padre); linea discontinua -> dependencia.
+- Multiplicidades: n, m, N, 0..*, 1..*, muchos, varios se normalizan a "*"; el resto a "1".
+- Visibilidad: + public, - private, # protected. Si no se distingue, "private".
+- Si un atributo no indica tipo, deducilo del nombre: precio/monto -> Float; cantidad/stock/edad -> Integer; fecha -> Date; activo -> Boolean; el resto String.
+- No incluyas un atributo llamado "id": el sistema lo agrega solo.
+
+## CLASES INTERMEDIAS (lo mas importante)
+
+Una caja unida con linea discontinua al MEDIO de una relacion, o una caja cuyo nombre sugiere intermediacion (Detalle, DetalleVenta, Inscripcion, ItemPedido), es una clase asociativa. Va con "asociativa": true y "relaciona" con los nombres de las DOS clases que une.
+
+Cuando aparece una intermedia entre dos clases que en el diagrama actual ya estaban unidas directamente, creas la intermedia y NO borras nada: la relacion vieja queda, y el validador se encarga del resto.
+
+## REGLAS DE COMPARACION
+
+- Una clase que ya existe en el diagrama actual (mismo nombre, ignorando mayusculas y acentos) NO se vuelve a crear. Si en la imagen tiene atributos que alli no estan, los agregas de a uno con la accion 3.
+- Una relacion que ya existe entre las mismas dos clases NO se vuelve a crear.
+- No borras nada que este en el diagrama actual y no aparezca en la foto: puede haberse dibujado en otra parte de la pizarra o agregado despues. Solo sumas.
+- Para nombrar una clase que ya existe, usa su nombre EXACTAMENTE como figura en el diagrama actual.
+- Si la imagen no es un diagrama de clases o no logras leerla, devuelves {"actions": []}.
+
+## EJEMPLO
+
+Diagrama actual: clases Venta(fecha), Cliente(nombre, email), Producto(nombre, precio, stock); relaciones Venta-Producto y Venta-Cliente.
+La foto muestra ademas una clase Vendedor(nombre) unida a Venta, y una caja Detalle(cantidad, precioUnit) colgando de la linea entre Venta y Producto.
+
+{"actions":[
+ {"type":"create","target":"class","data":{"label":"Vendedor","attributes":[{"name":"nombre","datatype":"String","scope":"private"}]}},
+ {"type":"create","target":"edge","data":{"sourceLabel":"Vendedor","targetLabel":"Venta","tipo":"asociacion","multiplicidadOrigen":"1","multiplicidadDestino":"*"}},
+ {"type":"create","target":"class","data":{"label":"Detalle","attributes":[{"name":"cantidad","datatype":"Integer","scope":"private"},{"name":"precioUnit","datatype":"Float","scope":"private"}],"asociativa":true,"relaciona":["Venta","Producto"]}}
+]}`;
+
+export function imageMergeUser(classes: unknown, relations: unknown): string {
+  const sinClases = !Array.isArray(classes) || classes.length === 0;
+  return `## DIAGRAMA ACTUAL
+
+Clases existentes:
+${sinClases ? '(ninguna: el diagrama esta vacio, transcribi toda la imagen)' : JSON.stringify(classes, null, 1)}
+
+Relaciones existentes:
+${!Array.isArray(relations) || relations.length === 0 ? '(ninguna)' : JSON.stringify(relations, null, 1)}
+
+## TAREA
+
+Recorre la imagen clase por clase y despues linea por linea. Compara con el diagrama actual y devolve solo las acciones que faltan aplicar.
+
+Responde solo con el objeto JSON {"actions": [...]}.`;
+}

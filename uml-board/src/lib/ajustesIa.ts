@@ -40,7 +40,44 @@ export interface AjustesIa {
 
 const CLAVE_ALMACEN = 'case.ajustes-ia';
 
+/**
+ * Identificador de sesion para el proveedor.
+ *
+ * Existe porque algunas pasarelas (OpenCode Go entre ellas) rechazan la peticion
+ * si no pueden agrupar los mensajes de una misma conversacion. Se genera una vez
+ * por pestana y se manda igual a todos: al que no lo usa no le molesta.
+ */
+let sesionIa = '';
+
+export function sesionDeIa(): string {
+  if (sesionIa === '') {
+    sesionIa =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `s-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }
+  return sesionIa;
+}
+
 export const PROVEEDORES = [
+  {
+    // Gemini expone un endpoint compatible con OpenAI, asi que entra por el
+    // mismo camino que los demas sin codigo especial. La clave va como Bearer.
+    id: 'gemini',
+    nombre: 'Google Gemini',
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+    modelo: 'gemini-3.6-flash',
+    modeloVision: 'gemini-3.6-flash',
+  },
+  {
+    // El plan Go de OpenCode: endpoint propio, distinto del de Zen (que cobra
+    // contra un saldo aparte). Pide ademas la cabecera de sesion.
+    id: 'opencode-go',
+    nombre: 'OpenCode Go',
+    baseUrl: 'https://opencode.ai/zen/go/v1/chat/completions',
+    modelo: 'glm-5.3-flash',
+    modeloVision: 'deepseek-v4-flash-vision-exp',
+  },
   {
     id: 'openai',
     nombre: 'OpenAI',
@@ -117,6 +154,7 @@ export function cabecerasDeIa(ajustes: AjustesIa = leerAjustesIa()): Record<stri
     'x-ia-base-url': ajustes.baseUrlNube,
     'x-ia-modelo': ajustes.modeloNube,
     'x-ia-modelo-vision': ajustes.modeloNubeVision,
+    'x-ia-sesion': sesionDeIa(),
   };
 }
 
