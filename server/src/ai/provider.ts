@@ -298,9 +298,24 @@ async function openaiChat(req: ChatRequest, motor?: Motor): Promise<ChatResult> 
     console.warn('[ai] el proveedor no acepta response_format, se reintenta sin el');
     data = await llamar(false);
   }
-  const text = data?.choices?.[0]?.message?.content;
+  const mensaje = data?.choices?.[0]?.message;
+  const text = mensaje?.content;
   if (typeof text !== 'string' || text.trim() === '') {
-    throw new Error('OpenAI devolvio una respuesta vacia');
+    // Los modelos de razonamiento gastan tokens pensando ANTES de escribir la
+    // respuesta, y ese gasto sale del mismo max_tokens. Si el presupuesto se
+    // agota razonando, la respuesta llega vacia sin que haya ningun error: el
+    // proveedor cumplio. Decirlo asi ahorra buscar el problema en la clave o en
+    // el endpoint, que es donde no esta.
+    const razono =
+      typeof mensaje?.reasoning_content === 'string' && mensaje.reasoning_content.trim() !== '';
+    const corte = data?.choices?.[0]?.finish_reason;
+    if (razono || corte === 'length') {
+      throw new Error(
+        `El modelo "${model}" contesto vacio porque gasto su presupuesto de tokens razonando. ` +
+          'Subi el limite de tokens, o usa un modelo sin razonamiento para esta tarea.'
+      );
+    }
+    throw new Error(`El proveedor devolvio una respuesta vacia (modelo "${model}")`);
   }
   return { text, provider: 'openai', model };
 }

@@ -282,7 +282,10 @@ aiRouter.post('/probar', async (req, res) => {
       {
         system: 'Respondes UNICAMENTE con el objeto JSON {"ok": true}.',
         user: 'Devolve {"ok": true}.',
-        numPredict: 32,
+        // Holgado a proposito: un modelo de razonamiento gasta cientos de tokens
+        // pensando antes de escribir, y con un limite chico la prueba fallaba
+        // por vacia aunque la clave estuviera perfecta.
+        numPredict: 512,
       },
       motor
     );
