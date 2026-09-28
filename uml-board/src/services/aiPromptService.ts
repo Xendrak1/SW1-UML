@@ -24,6 +24,8 @@ export interface PromptResult {
   model: string;
   /** 'dominio' cuando la IA modelo un negocio completo, 'atomico' cuando fue una edicion puntual. */
   modo: string;
+  /** Motivos por los que se descarto lo que el modelo propuso. Sirve para explicar un "no pasó nada". */
+  descartadas: string[];
 }
 
 export const processUMLPromptDetailed = async (
@@ -52,7 +54,8 @@ export const processUMLPromptDetailed = async (
     const actions = (res.actions ?? []) as DiagramAction[];
     const modo = typeof res.modo === 'string' ? res.modo : 'atomico';
     console.log(`[ia] ${actions.length} accion(es) via ${res.provider} (${res.model}) [modo ${modo}]`);
-    return { actions, provider: res.provider, model: res.model, modo };
+    const descartadas = Array.isArray(res.descartadas) ? (res.descartadas as string[]) : [];
+    return { actions, provider: res.provider, model: res.model, modo, descartadas };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Error desconocido';
     throw new Error(

@@ -95,16 +95,30 @@ const UmlPrompt: React.FC<UmlPromptProps> = ({ isOpen, onClose, existingNodes, e
     setResultado(null);
 
     try {
-      const { actions, provider, modo } = await processUMLPromptDetailed(
+      const { actions, provider, modo, descartadas } = await processUMLPromptDetailed(
         instruccion,
         existingNodes,
         existingEdges
       );
 
       if (actions.length === 0) {
+        // Cuando lo unico que se descarto fue un atributo "id", no hubo un fallo
+        // de comprension: la herramienta agrega esa clave sola al generar el
+        // backend, y decir "no entendi" manda a reescribir una instruccion que
+        // estaba perfecta.
+        // Puede venir por dos caminos: el modelo propuso los atributos y el
+        // validador los descarto, o el propio prompt le dijo que no los
+        // propusiera y devolvio la lista vacia. Los dos terminan igual de
+        // confusos para quien escribio la instruccion.
+        const pidioId = /\b(id|identificador|clave primaria|primary key)\b/i.test(instruccion);
+        const soloId =
+          (descartadas.length > 0 && descartadas.every(m => /\bid\b/i.test(m))) || pidioId;
         setError(
-          'No interpreté ningún cambio para el diagrama. Probá con una instrucción más ' +
-            'concreta, por ejemplo: "creá una clase Producto con nombre texto y precio decimal".'
+          soloId
+            ? 'No hace falta: cada clase lleva su id automáticamente, y el generador de backend ' +
+              'lo crea como clave primaria. Por eso no se dibuja en el diagrama.'
+            : 'No interpreté ningún cambio para el diagrama. Probá con una instrucción más ' +
+              'concreta, por ejemplo: "creá una clase Producto con nombre texto y precio decimal".'
         );
         return;
       }
